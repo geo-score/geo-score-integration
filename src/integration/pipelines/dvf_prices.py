@@ -1,8 +1,8 @@
 """
 DVF pipeline — Median prices per cadastral section.
 
-Schema: dvf_sections
-Tables: one per year (e.g. dvf_sections.y2023)
+Schema: dvf_prices
+Tables: one per year (e.g. dvf_prices.y2023)
 
 Sources:
 - DVF open data: https://files.data.gouv.fr/geo-dvf/latest/csv/
@@ -28,7 +28,7 @@ CADASTRE_BASE_URL = (
     "https://cadastre.data.gouv.fr/data/etalab-cadastre/latest/geojson/departements"
 )
 
-SCHEMA = "dvf_sections"
+SCHEMA = "dvf_prices"
 
 
 def _table_name(year: int) -> str:
@@ -36,7 +36,7 @@ def _table_name(year: int) -> str:
 
 
 def _ensure_schema():
-    """Create the dvf_sections schema if it doesn't exist."""
+    """Create the dvf_prices schema if it doesn't exist."""
     with engine.connect() as conn:
         conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}"))
         conn.commit()
