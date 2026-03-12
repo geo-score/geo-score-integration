@@ -29,6 +29,9 @@ uv run geo-integrate dvf --year 2023 --dep 75
 
 # Multiple departments
 uv run geo-integrate dvf --year 2023 --dep 75 --dep 92 --dep 93 --dep 94
+
+# All departments at once (works for any pipeline)
+uv run geo-integrate dvf --year 2023 --all
 ```
 
 ## DVF — Land value prices per cadastral section
@@ -40,20 +43,9 @@ Downloads DVF open data + cadastral section geometries from data.gouv.fr, aggreg
 **Columns:** `section_id`, `geom` (native PostGIS with GIST index), `prix_m2_median`, `prix_m2_mean`, `nb_ventes`, `surface_mediane`, `departement`
 
 ```bash
-# Single department (Paris, 2023)
 uv run geo-integrate dvf --year 2023 --dep 75
-
-# Île-de-France
-uv run geo-integrate dvf --year 2023 --dep 75 --dep 92 --dep 93 --dep 94 --dep 77 --dep 78 --dep 91 --dep 95
-
-# All departments at once
 uv run geo-integrate dvf --year 2023 --all
-
-# Different year → separate table (dvf_prices.y2022)
-uv run geo-integrate dvf --year 2022 --dep 75
-
-# Idempotent — re-running same dep replaces its data
-uv run geo-integrate dvf --year 2023 --dep 13
+uv run geo-integrate dvf --year 2022 --dep 75    # → dvf_prices.y2022
 ```
 
 ## Crime stats — Crime statistics per commune
@@ -62,77 +54,71 @@ Downloads commune-level crime statistics from data.gouv.fr + commune geometries 
 
 **Schema:** `crime_stats` — one table per year (`y2024`, `y2023`, etc.)
 
-**Columns:** `code_commune`, `geom` (native PostGIS with GIST index), `departement`, plus per-indicator columns:
-- `taux_*` — rate per 1000 inhabitants
-- `nb_*` — absolute count
-
-Indicators include: burglaries, voluntary damage, domestic violence, non-domestic violence, sexual violence, theft (various types), drug trafficking, drug use, fraud.
+**Columns:** `code_commune`, `geom` (GIST index), `departement`, `taux_*` (rate per 1000), `nb_*` (count)
 
 ```bash
-# Single department (Paris, 2024)
 uv run geo-integrate delinquance --year 2024 --dep 75
-
-# Île-de-France
-uv run geo-integrate delinquance --year 2024 --dep 75 --dep 92 --dep 93 --dep 94 --dep 77 --dep 78 --dep 91 --dep 95
-
-# All departments at once
 uv run geo-integrate delinquance --year 2024 --all
-
-# Different year → separate table (crime_stats.y2023)
-uv run geo-integrate delinquance --year 2023 --dep 75
-
-# Idempotent — re-running same dep replaces its data
-uv run geo-integrate delinquance --year 2024 --dep 13
 ```
 
-## OSM Shops — Shops and amenities from OpenStreetMap
+## OSM Shops — Shops and amenities as points
 
-Queries the Overpass API for `shop=*` and key `amenity=*` tags (restaurants, cafes, pharmacies, banks, etc.) as points, and loads into PostGIS. Tables are snapshots by date.
+Queries the Overpass API for `shop=*` and key `amenity=*` tags (restaurants, cafes, pharmacies, banks, etc.) as points.
 
-**Schema:** `osm_shops` — one table per snapshot date (`d2026_03_12`, etc.)
+**Schema:** `osm` — table: `shops`
 
-**Columns:** `osm_id`, `osm_type`, `name`, `shop`, `amenity`, `cuisine`, `brand`, `opening_hours`, `addr_street`, `addr_housenumber`, `addr_postcode`, `addr_city`, `departement`, `geom` (Point, GIST index)
+**Columns:** `osm_id`, `name`, `shop`, `amenity`, `cuisine`, `brand`, `opening_hours`, `addr_*`, `departement`, `geom` (Point, GIST index)
 
 ```bash
-# Single department (Paris, today's snapshot)
 uv run geo-integrate shops --dep 75
-
-# Île-de-France
-uv run geo-integrate shops --dep 75 --dep 92 --dep 93 --dep 94 --dep 77 --dep 78 --dep 91 --dep 95
-
-# All departments at once
 uv run geo-integrate shops --all
+```
 
-# Specific snapshot date
-uv run geo-integrate shops --dep 75 --snapshot 2026-03-01
+## OSM Green Spaces — Parks, gardens, playgrounds as polygons
 
-# Idempotent — re-running same dep + date replaces its data
-uv run geo-integrate shops --dep 13
+Queries the Overpass API for green/recreational areas: parks, gardens, playgrounds, dog parks, nature reserves, recreation grounds, forests, meadows.
+
+**Schema:** `osm` — table: `green_spaces`
+
+**Columns:** `osm_id`, `osm_type`, `name`, `leisure`, `landuse`, `access`, `surface`, `departement`, `geom` (Polygon/MultiPolygon, GIST index)
+
+```bash
+uv run geo-integrate green-spaces --dep 75
+uv run geo-integrate green-spaces --all
 ```
 
 ## Pipelines
 
-| Pipeline       | Schema        | Tables            | Description                                                          |
-|----------------|---------------|-------------------|----------------------------------------------------------------------|
-| `dvf`          | `dvf_prices`  | `y2023`, `y2022`  | Median price/m² per cadastral section (DVF + Etalab cadastre)        |
-| `delinquance`  | `crime_stats` | `y2024`, `y2023`  | Crime statistics per commune (Ministry of Interior + Etalab cadastre) |
-| `shops`        | `osm_shops`   | `d2026_03_12`     | Shops and amenities as points (OpenStreetMap / Overpass API)         |
+| Pipeline       | Schema        | Table           | Description                                                           |
+|----------------|---------------|-----------------|-----------------------------------------------------------------------|
+| `dvf`          | `dvf_prices`  | `y{year}`       | Median price/m² per cadastral section (DVF + Etalab cadastre)         |
+| `delinquance`  | `crime_stats` | `y{year}`       | Crime statistics per commune (Ministry of Interior + Etalab cadastre) |
+| `shops`        | `osm`         | `shops`         | Shops and amenities as points (Overpass API)                          |
+| `green-spaces` | `osm`         | `green_spaces`  | Parks, gardens, playgrounds as polygons (Overpass API)                |
+
+All pipelines support `--dep` (one or more) and `--all` flags. Pipelines are idempotent per department.
 
 ## Architecture
 
 ```
-src/integration/
-├── config.py              # Configuration (DATABASE_URL via .env)
+src/
+├── config.py              # Settings from .env (DB credentials)
 ├── db.py                  # SQLAlchemy engine + session
 ├── cli.py                 # Typer CLI (entry point)
+├── common/
+│   ├── download.py        # HTTP file download + gzip decompression
+│   ├── loader.py          # PostGIS loading + native geom + GIST index
+│   ├── overpass.py        # Overpass API query + retry + department bboxes
+│   └── schema.py          # Schema creation + idempotent department upsert
 └── pipelines/
     ├── dvf_prices.py      # DVF → cadastral sections ETL
     ├── crime_stats.py     # Crime stats → communes ETL
-    └── osm_shops.py       # OSM shops → points ETL
+    ├── osm_shops.py       # OSM shops → points ETL
+    └── osm_green_spaces.py # OSM green spaces → polygons ETL
 ```
 
 ## Adding a new pipeline
 
-1. Create `src/integration/pipelines/my_pipeline.py` with a `run()` function
-2. Add a command in `cli.py`
-3. Document the created table in this README
+1. Create `src/pipelines/my_pipeline.py` with a `run()` function
+2. Add a command in `src/cli.py`
+3. Document the table in this README

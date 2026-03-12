@@ -1,40 +1,13 @@
-"""
-OSM commerce pipeline — Shop and amenity points from OpenStreetMap.
-
-Schema: osm_shops
-Tables: one per date snapshot (e.g. osm_shops.d2026_03_12)
-
-Source: Overpass API (https://overpass-api.de/api/interpreter)
-"""
+"""Overpass API query utilities with retry and department bounding boxes."""
 
 import time
-from datetime import date
 
-import geopandas as gpd
 import httpx
-import pandas as pd
 from rich.console import Console
-from shapely.geometry import Point
-
-from integration.common import (
-    delete_existing_departments,
-    ensure_schema,
-    load_geodataframe,
-)
-from integration.db import ensure_postgis
 
 console = Console()
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-
-SCHEMA = "osm_shops"
-
-AMENITY_TAGS = [
-    "restaurant", "cafe", "bar", "pub", "fast_food", "bakery",
-    "pharmacy", "bank", "post_office", "fuel",
-    "dentist", "doctors", "veterinary",
-    "cinema", "theatre", "library",
-]
 
 # Department bounding boxes (approximate) — (south, west, north, east)
 DEP_BBOX: dict[str, tuple[float, float, float, float]] = {
@@ -142,28 +115,35 @@ DEP_BBOX: dict[str, tuple[float, float, float, float]] = {
 }
 
 
-def _build_overpass_query(bbox: tuple[float, float, float, float]) -> str:
-    s, w, n, e = bbox
-    bbox_str = f"{s},{w},{n},{e}"
-    amenity_filter = "|".join(AMENITY_TAGS)
-    return f"""
-[out:json][timeout:180];
-(
-  node["shop"]({bbox_str});
-  node["amenity"~"^({amenity_filter})$"]({bbox_str});
-);
-out center;
-"""
+def query_overpass(
+    dep: str,
+    query_body: str,
+    max_retries: int = 5,
+    out_mode: str = "center",
+) -> list[dict]:
+    """Query Overpass API for a department with retry on 429.
 
-
-def query_overpass(dep: str, max_retries: int = 5) -> list[dict]:
-    """Query Overpass API with retry on 429."""
+    Args:
+        dep: Department code.
+        query_body: Overpass QL body with {bbox} placeholder.
+        max_retries: Max retry attempts on rate limit.
+        out_mode: Overpass output mode ("center" for points, "body geom" for polygons).
+    """
     bbox = DEP_BBOX.get(dep)
     if not bbox:
         console.print(f"  [yellow]No bounding box for department {dep}, skipping[/yellow]")
         return []
 
-    query = _build_overpass_query(bbox)
+    s, w, n, e = bbox
+    bbox_str = f"{s},{w},{n},{e}"
+
+    query = f"""
+[out:json][timeout:180];
+(
+{query_body.format(bbox=bbox_str)}
+);
+out {out_mode};
+"""
     console.print(f"  Querying Overpass API for {dep}...")
 
     for attempt in range(max_retries):
@@ -178,79 +158,3 @@ def query_overpass(dep: str, max_retries: int = 5) -> list[dict]:
 
     console.print(f"  [red]Failed after {max_retries} retries for {dep}[/red]")
     return []
-
-
-def parse_elements(elements: list[dict], dep: str) -> gpd.GeoDataFrame:
-    """Parse Overpass elements into a GeoDataFrame of points."""
-    rows = []
-    for el in elements:
-        lat = el.get("lat")
-        lon = el.get("lon")
-        if lat is None or lon is None:
-            continue
-
-        tags = el.get("tags", {})
-        rows.append({
-            "osm_id": el["id"],
-            "osm_type": el["type"],
-            "name": tags.get("name"),
-            "shop": tags.get("shop"),
-            "amenity": tags.get("amenity"),
-            "cuisine": tags.get("cuisine"),
-            "brand": tags.get("brand"),
-            "opening_hours": tags.get("opening_hours"),
-            "addr_street": tags.get("addr:street"),
-            "addr_housenumber": tags.get("addr:housenumber"),
-            "addr_postcode": tags.get("addr:postcode"),
-            "addr_city": tags.get("addr:city"),
-            "departement": dep,
-            "geometry": Point(lon, lat),
-        })
-
-    if not rows:
-        return gpd.GeoDataFrame()
-
-    return gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
-
-
-def run(departements: list[str], snapshot: date | None = None):
-    """Main pipeline: query Overpass, parse, and load into DB."""
-    ensure_postgis()
-    ensure_schema(SCHEMA)
-
-    if snapshot is None:
-        snapshot = date.today()
-
-    table = f"d{snapshot.strftime('%Y_%m_%d')}"
-    qualified = f"{SCHEMA}.{table}"
-
-    all_frames = []
-
-    for i, dep in enumerate(departements):
-        if i > 0:
-            time.sleep(5)
-        console.print(f"\n[bold]Department {dep} ({i + 1}/{len(departements)})[/bold]")
-
-        elements = query_overpass(dep)
-        console.print(f"  -> {len(elements)} OSM elements found")
-
-        if not elements:
-            continue
-
-        gdf = parse_elements(elements, dep)
-        console.print(f"  -> {len(gdf)} points parsed")
-        all_frames.append(gdf)
-
-    if not all_frames:
-        console.print("[red]No data to load.[/red]")
-        return
-
-    final = gpd.GeoDataFrame(pd.concat(all_frames, ignore_index=True))
-    final = final.set_crs(epsg=4326)
-
-    delete_existing_departments(qualified, departements)
-
-    console.print(f"\n[bold]Loading into {qualified}...[/bold]")
-    load_geodataframe(final, table, SCHEMA, geom_type="Point")
-
-    console.print(f"[green]Done — {len(final)} points loaded into {qualified}[/green]")

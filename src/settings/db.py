@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, declarative_base
 
-from integration.config import settings
+from settings.config import settings
 
 engine = create_engine(settings.database_url, echo=False)
 Base = declarative_base()

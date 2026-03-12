@@ -3,7 +3,7 @@
 import geopandas as gpd
 from sqlalchemy import text
 
-from integration.db import engine
+from settings.db import engine
 
  
 def load_geodataframe(

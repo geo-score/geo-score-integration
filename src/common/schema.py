@@ -3,7 +3,7 @@
 from rich.console import Console
 from sqlalchemy import text
 
-from integration.db import engine
+from settings.db import engine
 
 console = Console()
 

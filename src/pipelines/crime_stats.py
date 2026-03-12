@@ -16,13 +16,13 @@ import geopandas as gpd
 import pandas as pd
 from rich.console import Console
 
-from integration.common import (
+from common import (
     delete_existing_departments,
     download_file,
     ensure_schema,
     load_geodataframe,
 )
-from integration.db import ensure_postgis
+from settings.db import ensure_postgis
 
 console = Console()
 

@@ -33,7 +33,7 @@ def dvf(
         all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
 ):
     """Load median DVF prices per cadastral section."""
-    from integration.pipelines.dvf_prices import run
+    from pipelines.dvf_prices import run
 
     run(year=year, departements=_resolve_deps(departements, all_deps))
 
@@ -47,7 +47,7 @@ def delinquance(
         all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
 ):
     """Load crime statistics per commune."""
-    from integration.pipelines.crime_stats import run
+    from pipelines.crime_stats import run
 
     run(year=year, departements=_resolve_deps(departements, all_deps))
 
@@ -58,15 +58,24 @@ def shops(
             ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
         ),
         all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
-        snapshot: str = typer.Option(None, help="Snapshot date (YYYY-MM-DD), defaults to today"),
 ):
     """Load OSM shops and amenities as points."""
-    from datetime import date as dt
+    from pipelines.osm_shops import run
 
-    from integration.pipelines.osm_shops import run
+    run(departements=_resolve_deps(departements, all_deps))
 
-    snap = dt.fromisoformat(snapshot) if snapshot else None
-    run(departements=_resolve_deps(departements, all_deps), snapshot=snap)
+
+@app.command()
+def green_spaces(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load OSM green spaces (parks, gardens, playgrounds) as polygons."""
+    from pipelines.osm_green_spaces import run
+
+    run(departements=_resolve_deps(departements, all_deps))
 
 
 @app.command()
@@ -74,7 +83,7 @@ def check_db():
     """Check database connection."""
     from sqlalchemy import text
 
-    from integration.db import engine
+    from settings.db import engine
 
     with engine.connect() as conn:
         result = conn.execute(text("SELECT PostGIS_Version()")).scalar()
