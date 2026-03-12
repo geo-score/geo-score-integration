@@ -7,18 +7,21 @@ Tables: one per date snapshot (e.g. osm_shops.d2026_03_12)
 Source: Overpass API (https://overpass-api.de/api/interpreter)
 """
 
-import tempfile
+import time
 from datetime import date
-from pathlib import Path
 
 import geopandas as gpd
 import httpx
 import pandas as pd
 from rich.console import Console
 from shapely.geometry import Point
-from sqlalchemy import text
 
-from integration.db import engine, ensure_postgis
+from integration.common import (
+    delete_existing_departments,
+    ensure_schema,
+    load_geodataframe,
+)
+from integration.db import ensure_postgis
 
 console = Console()
 
@@ -26,29 +29,14 @@ OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
 SCHEMA = "osm_shops"
 
-# OSM tags to extract
-SHOP_QUERY = 'node["shop"]({bbox});'
 AMENITY_TAGS = [
-    "restaurant",
-    "cafe",
-    "bar",
-    "pub",
-    "fast_food",
-    "bakery",
-    "pharmacy",
-    "bank",
-    "post_office",
-    "fuel",
-    "dentist",
-    "doctors",
-    "veterinary",
-    "cinema",
-    "theatre",
-    "library",
+    "restaurant", "cafe", "bar", "pub", "fast_food", "bakery",
+    "pharmacy", "bank", "post_office", "fuel",
+    "dentist", "doctors", "veterinary",
+    "cinema", "theatre", "library",
 ]
 
-# Department bounding boxes (approximate) — avoids heavy Overpass area queries
-# Format: (south, west, north, east)
+# Department bounding boxes (approximate) — (south, west, north, east)
 DEP_BBOX: dict[str, tuple[float, float, float, float]] = {
     "01": (45.6, 4.7, 46.5, 6.2),
     "02": (49.0, 3.0, 49.9, 4.1),
@@ -154,23 +142,10 @@ DEP_BBOX: dict[str, tuple[float, float, float, float]] = {
 }
 
 
-def _table_name(snapshot: date) -> str:
-    return f"d{snapshot.strftime('%Y_%m_%d')}"
-
-
-def _ensure_schema():
-    with engine.connect() as conn:
-        conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}"))
-        conn.commit()
-
-
 def _build_overpass_query(bbox: tuple[float, float, float, float]) -> str:
-    """Build Overpass QL query for shops and amenities in a bounding box."""
     s, w, n, e = bbox
     bbox_str = f"{s},{w},{n},{e}"
-
     amenity_filter = "|".join(AMENITY_TAGS)
-
     return f"""
 [out:json][timeout:180];
 (
@@ -181,8 +156,8 @@ out center;
 """
 
 
-def query_overpass(dep: str) -> list[dict]:
-    """Query Overpass API for a department's shops and amenities."""
+def query_overpass(dep: str, max_retries: int = 5) -> list[dict]:
+    """Query Overpass API with retry on 429."""
     bbox = DEP_BBOX.get(dep)
     if not bbox:
         console.print(f"  [yellow]No bounding box for department {dep}, skipping[/yellow]")
@@ -191,15 +166,18 @@ def query_overpass(dep: str) -> list[dict]:
     query = _build_overpass_query(bbox)
     console.print(f"  Querying Overpass API for {dep}...")
 
-    resp = httpx.post(
-        OVERPASS_URL,
-        data={"data": query},
-        timeout=200,
-    )
-    resp.raise_for_status()
-    data = resp.json()
+    for attempt in range(max_retries):
+        resp = httpx.post(OVERPASS_URL, data={"data": query}, timeout=200)
+        if resp.status_code == 429:
+            wait = 15 * (attempt + 1)
+            console.print(f"  [yellow]Rate limited, waiting {wait}s...[/yellow]")
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp.json().get("elements", [])
 
-    return data.get("elements", [])
+    console.print(f"  [red]Failed after {max_retries} retries for {dep}[/red]")
+    return []
 
 
 def parse_elements(elements: list[dict], dep: str) -> gpd.GeoDataFrame:
@@ -232,25 +210,26 @@ def parse_elements(elements: list[dict], dep: str) -> gpd.GeoDataFrame:
     if not rows:
         return gpd.GeoDataFrame()
 
-    gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
-    return gdf
+    return gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326")
 
 
 def run(departements: list[str], snapshot: date | None = None):
     """Main pipeline: query Overpass, parse, and load into DB."""
     ensure_postgis()
-    _ensure_schema()
+    ensure_schema(SCHEMA)
 
     if snapshot is None:
         snapshot = date.today()
 
-    table = _table_name(snapshot)
+    table = f"d{snapshot.strftime('%Y_%m_%d')}"
     qualified = f"{SCHEMA}.{table}"
 
     all_frames = []
 
-    for dep in departements:
-        console.print(f"\n[bold]Department {dep}[/bold]")
+    for i, dep in enumerate(departements):
+        if i > 0:
+            time.sleep(5)
+        console.print(f"\n[bold]Department {dep} ({i + 1}/{len(departements)})[/bold]")
 
         elements = query_overpass(dep)
         console.print(f"  -> {len(elements)} OSM elements found")
@@ -269,44 +248,9 @@ def run(departements: list[str], snapshot: date | None = None):
     final = gpd.GeoDataFrame(pd.concat(all_frames, ignore_index=True))
     final = final.set_crs(epsg=4326)
 
-    # Delete existing rows for these departments
-    with engine.connect() as conn:
-        table_exists = conn.execute(
-            text("SELECT to_regclass(:t)"),
-            {"t": qualified},
-        ).scalar()
+    delete_existing_departments(qualified, departements)
 
-        if table_exists:
-            dep_list = ",".join(f"'{d}'" for d in departements)
-            conn.execute(text(f"DELETE FROM {qualified} WHERE departement IN ({dep_list})"))
-            conn.commit()
-            console.print(f"  Cleared existing data for departments {departements}")
-
-    # Load into database
     console.print(f"\n[bold]Loading into {qualified}...[/bold]")
-    final.to_postgis(
-        table,
-        engine,
-        schema=SCHEMA,
-        if_exists="append",
-        index=False,
-        dtype={"geometry": "Geometry"},
-    )
-
-    # Convert to native PostGIS point, drop original, add spatial index
-    with engine.connect() as conn:
-        conn.execute(text(
-            f"ALTER TABLE {qualified} ADD COLUMN IF NOT EXISTS geom geometry(Point, 4326)"
-        ))
-        conn.execute(text(
-            f"UPDATE {qualified} SET geom = geometry::geometry WHERE geom IS NULL"
-        ))
-        conn.execute(text(
-            f"ALTER TABLE {qualified} DROP COLUMN IF EXISTS geometry"
-        ))
-        conn.execute(text(
-            f"CREATE INDEX IF NOT EXISTS idx_{table}_geom ON {qualified} USING GIST (geom)"
-        ))
-        conn.commit()
+    load_geodataframe(final, table, SCHEMA, geom_type="Point")
 
     console.print(f"[green]Done — {len(final)} points loaded into {qualified}[/green]")

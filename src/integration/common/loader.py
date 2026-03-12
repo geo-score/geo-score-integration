@@ -5,13 +5,13 @@ from sqlalchemy import text
 
 from integration.db import engine
 
-
+ 
 def load_geodataframe(
-    gdf: gpd.GeoDataFrame,
-    table: str,
-    schema: str,
-    *,
-    geom_type: str = "Geometry",
+        gdf: gpd.GeoDataFrame,
+        table: str,
+        schema: str,
+        *,
+        geom_type: str = "Geometry",
 ):
     """Load a GeoDataFrame into PostGIS with native geom column and GIST index."""
     qualified = f"{schema}.{table}"

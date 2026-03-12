@@ -46,12 +46,14 @@ uv run geo-integrate dvf --year 2023 --dep 75
 # Île-de-France
 uv run geo-integrate dvf --year 2023 --dep 75 --dep 92 --dep 93 --dep 94 --dep 77 --dep 78 --dep 91 --dep 95
 
+# All departments at once
+uv run geo-integrate dvf --year 2023 --all
+
 # Different year → separate table (dvf_prices.y2022)
 uv run geo-integrate dvf --year 2022 --dep 75
 
-# Add departments to an existing year (idempotent — re-running same dep replaces its data)
+# Idempotent — re-running same dep replaces its data
 uv run geo-integrate dvf --year 2023 --dep 13
-uv run geo-integrate dvf --year 2023 --dep 69
 ```
 
 ## Crime stats — Crime statistics per commune
@@ -72,6 +74,9 @@ uv run geo-integrate delinquance --year 2024 --dep 75
 
 # Île-de-France
 uv run geo-integrate delinquance --year 2024 --dep 75 --dep 92 --dep 93 --dep 94 --dep 77 --dep 78 --dep 91 --dep 95
+
+# All departments at once
+uv run geo-integrate delinquance --year 2024 --all
 
 # Different year → separate table (crime_stats.y2023)
 uv run geo-integrate delinquance --year 2023 --dep 75
@@ -95,6 +100,9 @@ uv run geo-integrate shops --dep 75
 # Île-de-France
 uv run geo-integrate shops --dep 75 --dep 92 --dep 93 --dep 94 --dep 77 --dep 78 --dep 91 --dep 95
 
+# All departments at once
+uv run geo-integrate shops --all
+
 # Specific snapshot date
 uv run geo-integrate shops --dep 75 --snapshot 2026-03-01
 
@@ -104,11 +112,11 @@ uv run geo-integrate shops --dep 13
 
 ## Pipelines
 
-| Pipeline | Schema | Description |
-|----------|--------|-------------|
-| `dvf` | `dvf_prices` | Median price/m² per cadastral section (DVF + Etalab cadastre) |
-| `delinquance` | `crime_stats` | Crime statistics per commune (Ministry of Interior + Etalab cadastre) |
-| `shops` | `osm_shops` | Shops and amenities as points (OpenStreetMap / Overpass API) |
+| Pipeline       | Schema        | Tables            | Description                                                          |
+|----------------|---------------|-------------------|----------------------------------------------------------------------|
+| `dvf`          | `dvf_prices`  | `y2023`, `y2022`  | Median price/m² per cadastral section (DVF + Etalab cadastre)        |
+| `delinquance`  | `crime_stats` | `y2024`, `y2023`  | Crime statistics per commune (Ministry of Interior + Etalab cadastre) |
+| `shops`        | `osm_shops`   | `d2026_03_12`     | Shops and amenities as points (OpenStreetMap / Overpass API)         |
 
 ## Architecture
 
