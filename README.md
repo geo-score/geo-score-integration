@@ -178,6 +178,31 @@ uv run geo-integrate storm-risk --all
 
 ---
 
+## BDNB — Base de Données Nationale des Bâtiments
+
+Downloads per-department CSV archives from the BDNB open data (CSTB, millesime 2025-07-a) and loads selected tables into PostGIS. Tables join via `batiment_groupe_id`.
+
+**Schema:** `bati`
+
+| Table | Columns | Description |
+|-------|---------|-------------|
+| `buildings` | geom, code_iris, code_commune_insee, s_geom_groupe | Central building entity (32M rows nationally) |
+| `construction` | annee_construction, mat_mur_txt, mat_toit_txt, nb_niveau, nb_log | Construction characteristics |
+| `energy_dpe` | classe_bilan_dpe, classe_emission_ges, conso_5_usages_ep_m2, ... (106 cols) | Representative DPE energy performance |
+| `natural_risks` | alea_radon, alea_argile, alea_sismique | Natural risk indicators per building |
+| `property_values` | valeur_fonciere, prix_m2_local, prix_m2_terrain, date_mutation | Representative DVF transaction |
+| `coproperty` | numero_immat_principal, nb_lot_tot, nb_log, copro_dans_pvd | Copropriete registry (RNC) |
+| `social_housing` | classe_ener_principale, nb_log, type_construction | Social housing (RPLS) |
+| `addresses` | geom, cle_interop_adr, fiabilite | BAN geocoded addresses |
+
+```bash
+uv run geo-integrate bdnb --dep 75
+uv run geo-integrate bdnb --dep 75 --dep 92 --dep 93 --dep 94
+uv run geo-integrate bdnb --all    # ~35 GB in DB, long download
+```
+
+---
+
 ## Pipelines summary
 
 | Pipeline       | Schema        | Table           | Source                   | Description                                        |
@@ -190,6 +215,7 @@ uv run geo-integrate storm-risk --all
 | `flood-tri`    | `flood_risk`  | `tri_zones`     | Georisques               | TRI flood zones with probability scenarios         |
 | `clay-risk`    | `clay_risk`   | `rga_zones`     | Georisques / BRGM        | Clay shrink-swell exposure zones                   |
 | `storm-risk`   | `storm_risk`  | `wind_zones` / `catnat_storm` | Eurocode + GASPAR | Wind zones + storm CatNat history     |
+| `bdnb`         | `bati`        | 8 tables                      | BDNB (CSTB)       | Building data: energy, risks, DVF, copro |
 
 All pipelines support `--dep` (one or more) and `--all` flags. Pipelines are idempotent per department.
 
@@ -214,7 +240,8 @@ src/
     ├── mnt_exposure.py        # Copernicus DEM → sun exposure polygons ETL
     ├── flood_tri.py           # Georisques TRI → flood zone polygons ETL
     ├── clay_risk.py           # Georisques RGA → clay shrink-swell zones ETL
-    └── storm_risk.py          # Eurocode wind zones + GASPAR CatNat storms ETL
+    ├── storm_risk.py          # Eurocode wind zones + GASPAR CatNat storms ETL
+    └── bdnb.py                # BDNB building data (energy, risks, DVF, copro) ETL
 docker/
 ├── docker-compose.yml         # PostGIS database (shared with geo-score-back)
 └── init-db/01-init.sql        # PostGIS extensions init
