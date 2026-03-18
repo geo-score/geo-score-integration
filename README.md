@@ -115,6 +115,26 @@ uv run geo-integrate exposition --all
 
 ---
 
+## TRI Flood Zones — Flood risk areas (Directive Inondation 2020)
+
+Downloads TRI (Territoires à Risques Importants d'inondation) shapefiles from Georisques, extracts flood zone polygons for three probability scenarios, reprojects from Lambert 93 to WGS84, and loads into PostGIS. Not all departments have TRI data — only those with designated flood risk territories.
+
+**Schema:** `flood_risk` — table: `tri_zones`
+
+**Columns:** `flood_type`, `scenario`, `watercourse`, `tri_id`, `departement`, `geom` (Polygon, GIST index)
+
+**Classification:**
+- `flood_type`: `river_overflow` / `runoff` / `marine_submersion`
+- `scenario`: `high_probability` (frequent/decadal) / `medium_probability` (centennial) / `medium_probability_climate_change` / `low_probability` (rare/millennial)
+
+```bash
+uv run geo-integrate flood-tri --dep 75
+uv run geo-integrate flood-tri --dep 13    # multiple TRI zones (Avignon, Marseille, etc.)
+uv run geo-integrate flood-tri --all
+```
+
+---
+
 ## Pipelines summary
 
 | Pipeline       | Schema        | Table           | Source                   | Description                                        |
@@ -124,6 +144,7 @@ uv run geo-integrate exposition --all
 | `shops`        | `osm`         | `shops`         | Overpass API             | Shops and amenities as points                      |
 | `green-spaces` | `osm`         | `green_spaces`  | Overpass API             | Parks, gardens, playgrounds as polygons            |
 | `exposition`   | `mnt`         | `exposure`      | Copernicus DEM 90m (AWS) | Sun exposure classification from slope aspect      |
+| `flood-tri`    | `flood_risk`  | `tri_zones`     | Georisques               | TRI flood zones with probability scenarios         |
 
 All pipelines support `--dep` (one or more) and `--all` flags. Pipelines are idempotent per department.
 
@@ -145,7 +166,8 @@ src/
     ├── crime_stats.py         # Crime stats → communes ETL
     ├── osm_shops.py           # OSM shops → points ETL
     ├── osm_green_spaces.py    # OSM green spaces → polygons ETL
-    └── mnt_exposure.py        # Copernicus DEM → sun exposure polygons ETL
+    ├── mnt_exposure.py        # Copernicus DEM → sun exposure polygons ETL
+    └── flood_tri.py           # Georisques TRI → flood zone polygons ETL
 docker/
 ├── docker-compose.yml         # PostGIS database (shared with geo-score-back)
 └── init-db/01-init.sql        # PostGIS extensions init
