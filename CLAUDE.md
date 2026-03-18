@@ -1,0 +1,59 @@
+# geo-score-integration
+
+ETL pipelines to load geospatial datasets into the **geo_score** PostGIS database.
+Shares the same database as **geo-score-back** (the API backend, sibling project).
+
+## Quick start
+
+```bash
+# 1. Start the shared PostGIS database
+cd docker && docker compose up -d && cd ..
+
+# 2. Install dependencies
+uv sync
+
+# 3. Copy env (defaults match docker-compose)
+cp .env.example .env
+
+# 4. Check connection
+uv run geo-integrate check-db
+
+# 5. Load data (example: DVF prices for Paris)
+uv run geo-integrate dvf --dep 75
+```
+
+## Project structure
+
+```
+src/
+  settings/       # Config (Pydantic), DB engine (SQLAlchemy), CLI (Typer)
+  common/         # Shared: download, PostGIS loader, schema management, Overpass API
+  pipelines/      # One file per data source (ETL pipeline)
+docker/           # docker-compose + PostGIS init scripts (shared with geo-score-back)
+```
+
+## Pipelines
+
+| CLI command      | Pipeline file        | Schema        | Table          | Geometry   |
+|------------------|----------------------|---------------|----------------|------------|
+| `dvf`            | `dvf_prices.py`      | `dvf_prices`  | `y{year}`      | Polygon    |
+| `delinquance`    | `crime_stats.py`     | `crime_stats` | `y{year}`      | Polygon    |
+| `shops`          | `osm_shops.py`       | `osm`         | `shops`        | Point      |
+| `green-spaces`   | `osm_green_spaces.py`| `osm`         | `green_spaces` | Polygon    |
+| `exposition`     | `mnt_exposure.py`    | `mnt`         | `exposure`     | Polygon    |
+
+All commands support `--dep 75 --dep 92` or `--all` for department selection.
+
+## Database
+
+- PostgreSQL + PostGIS (docker-compose in `docker/`)
+- Geometry column: `geom`, SRID 4326, GIST indexed
+- Idempotent loading: delete-by-department + insert
+
+## Conventions
+
+- **All data-facing names in English** (column names, enum values, table names)
+- **Every pipeline must be documented in README.md** with: description, schema/table, columns, classification details if any, and example CLI commands
+- Pipeline pattern: download → parse/compute → GeoDataFrame → PostGIS
+- Dependencies managed with `uv`
+- Entry point: `geo-integrate = "settings.cli:app"`

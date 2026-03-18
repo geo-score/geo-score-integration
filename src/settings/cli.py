@@ -79,6 +79,19 @@ def green_spaces(
 
 
 @app.command()
+def exposition(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load MNT sun exposure (aspect classification from Copernicus DEM 90m)."""
+    from pipelines.mnt_exposure import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
 def check_db():
     """Check database connection."""
     from sqlalchemy import text
