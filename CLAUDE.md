@@ -43,6 +43,7 @@ docker/           # docker-compose + PostGIS init scripts (shared with geo-score
 | `exposition`     | `mnt_exposure.py`    | `mnt`         | `exposure`     | Polygon    |
 | `flood-tri`      | `flood_tri.py`       | `flood_risk`  | `tri_zones`    | Polygon    |
 | `clay-risk`      | `clay_risk.py`       | `clay_risk`   | `rga_zones`    | Polygon    |
+| `storm-risk`     | `storm_risk.py`      | `storm_risk`  | `wind_zones` / `catnat_storm` | Polygon |
 
 All commands support `--dep 75 --dep 92` or `--all` for department selection.
 

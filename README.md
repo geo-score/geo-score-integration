@@ -155,6 +155,29 @@ uv run geo-integrate clay-risk --all
 
 ---
 
+## Storm Risk — Eurocode wind zones + CatNat storm history
+
+Loads two complementary datasets into the `storm_risk` schema:
+
+### Wind zones (`storm_risk.wind_zones`)
+
+Eurocode EN 1991-1-4 wind zones dividing France into 4 levels based on reference wind speed. 19 polygons covering metropolitan France and overseas territories.
+
+**Columns:** `wind_zone` (1–4), `wind_speed_ms` (22/24/26/28 m/s), `geom` (MultiPolygon, GIST index)
+
+### CatNat storm history (`storm_risk.catnat_storm`)
+
+Historical CatNat (catastrophe naturelle) declarations for storms per commune, aggregated from the GASPAR database (~16K declarations since 1982). Joined to commune geometries from Etalab cadastre.
+
+**Columns:** `code_commune`, `storm_count`, `first_event`, `last_event`, `departement`, `geom` (Polygon, GIST index)
+
+```bash
+uv run geo-integrate storm-risk --dep 29 --dep 33
+uv run geo-integrate storm-risk --all
+```
+
+---
+
 ## Pipelines summary
 
 | Pipeline       | Schema        | Table           | Source                   | Description                                        |
@@ -166,6 +189,7 @@ uv run geo-integrate clay-risk --all
 | `exposition`   | `mnt`         | `exposure`      | Copernicus DEM 90m (AWS) | Sun exposure classification from slope aspect      |
 | `flood-tri`    | `flood_risk`  | `tri_zones`     | Georisques               | TRI flood zones with probability scenarios         |
 | `clay-risk`    | `clay_risk`   | `rga_zones`     | Georisques / BRGM        | Clay shrink-swell exposure zones                   |
+| `storm-risk`   | `storm_risk`  | `wind_zones` / `catnat_storm` | Eurocode + GASPAR | Wind zones + storm CatNat history     |
 
 All pipelines support `--dep` (one or more) and `--all` flags. Pipelines are idempotent per department.
 
@@ -189,7 +213,8 @@ src/
     ├── osm_green_spaces.py    # OSM green spaces → polygons ETL
     ├── mnt_exposure.py        # Copernicus DEM → sun exposure polygons ETL
     ├── flood_tri.py           # Georisques TRI → flood zone polygons ETL
-    └── clay_risk.py           # Georisques RGA → clay shrink-swell zones ETL
+    ├── clay_risk.py           # Georisques RGA → clay shrink-swell zones ETL
+    └── storm_risk.py          # Eurocode wind zones + GASPAR CatNat storms ETL
 docker/
 ├── docker-compose.yml         # PostGIS database (shared with geo-score-back)
 └── init-db/01-init.sql        # PostGIS extensions init
