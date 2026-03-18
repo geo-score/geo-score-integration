@@ -105,6 +105,19 @@ def flood_tri(
 
 
 @app.command()
+def clay_risk(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load RGA clay shrink-swell risk zones (retrait-gonflement des argiles)."""
+    from pipelines.clay_risk import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
 def check_db():
     """Check database connection."""
     from sqlalchemy import text

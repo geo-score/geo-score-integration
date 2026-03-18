@@ -135,6 +135,26 @@ uv run geo-integrate flood-tri --all
 
 ---
 
+## RGA Clay Risk — Clay shrink-swell exposure zones
+
+Downloads the national RGA (retrait-gonflement des argiles) shapefile from Georisques/BRGM (~594 MB, 122K polygons), filters by department, reprojects from Lambert 93 to WGS84, and loads into PostGIS. Areas not covered by any polygon have residual (negligible) exposure.
+
+**Schema:** `clay_risk` — table: `rga_zones`
+
+**Columns:** `exposure_level`, `departement`, `geom` (Polygon, GIST index)
+
+**Classification:**
+- `high` — strong exposure to clay shrink-swell
+- `medium` — medium exposure
+- `low` — low exposure
+
+```bash
+uv run geo-integrate clay-risk --dep 92 --dep 93 --dep 94
+uv run geo-integrate clay-risk --all
+```
+
+---
+
 ## Pipelines summary
 
 | Pipeline       | Schema        | Table           | Source                   | Description                                        |
@@ -145,6 +165,7 @@ uv run geo-integrate flood-tri --all
 | `green-spaces` | `osm`         | `green_spaces`  | Overpass API             | Parks, gardens, playgrounds as polygons            |
 | `exposition`   | `mnt`         | `exposure`      | Copernicus DEM 90m (AWS) | Sun exposure classification from slope aspect      |
 | `flood-tri`    | `flood_risk`  | `tri_zones`     | Georisques               | TRI flood zones with probability scenarios         |
+| `clay-risk`    | `clay_risk`   | `rga_zones`     | Georisques / BRGM        | Clay shrink-swell exposure zones                   |
 
 All pipelines support `--dep` (one or more) and `--all` flags. Pipelines are idempotent per department.
 
@@ -167,7 +188,8 @@ src/
     ├── osm_shops.py           # OSM shops → points ETL
     ├── osm_green_spaces.py    # OSM green spaces → polygons ETL
     ├── mnt_exposure.py        # Copernicus DEM → sun exposure polygons ETL
-    └── flood_tri.py           # Georisques TRI → flood zone polygons ETL
+    ├── flood_tri.py           # Georisques TRI → flood zone polygons ETL
+    └── clay_risk.py           # Georisques RGA → clay shrink-swell zones ETL
 docker/
 ├── docker-compose.yml         # PostGIS database (shared with geo-score-back)
 └── init-db/01-init.sql        # PostGIS extensions init
