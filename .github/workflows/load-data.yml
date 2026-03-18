@@ -1,0 +1,75 @@
+name: Load geospatial data
+
+on:
+  workflow_dispatch:
+    inputs:
+      departments:
+        description: "Departments to load (space-separated, e.g. '75 92 93 94') or '--all'"
+        required: true
+        default: "--all"
+      pipelines:
+        description: "Pipelines to run (comma-separated) or 'all'"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - dvf
+          - delinquance
+          - shops
+          - green-spaces
+          - exposition
+          - flood-tri
+          - clay-risk
+          - storm-risk
+          - bdnb
+
+env:
+  DB_HOST: ${{ secrets.DB_HOST }}
+  DB_PORT: ${{ secrets.DB_PORT }}
+  DB_NAME: ${{ secrets.DB_NAME }}
+  DB_USER: ${{ secrets.DB_USER }}
+  DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Check DB connection
+        run: uv run geo-integrate check-db
+
+      - name: Load data
+        run: |
+          DEPS="${{ github.event.inputs.departments }}"
+          PIPELINE="${{ github.event.inputs.pipelines }}"
+
+          if [ "$PIPELINE" = "all" ]; then
+            ./scripts/load.sh $DEPS
+          else
+            # Build dep flags
+            if [ "$DEPS" = "--all" ]; then
+              DEP_FLAGS="--all"
+            else
+              DEP_FLAGS=""
+              for dep in $DEPS; do
+                DEP_FLAGS="$DEP_FLAGS --dep $dep"
+              done
+            fi
+
+            # Handle pipelines with extra args
+            case "$PIPELINE" in
+              dvf)          uv run geo-integrate dvf --year 2023 $DEP_FLAGS ;;
+              delinquance)  uv run geo-integrate delinquance --year 2024 $DEP_FLAGS ;;
+              *)            uv run geo-integrate "$PIPELINE" $DEP_FLAGS ;;
+            esac
+          fi
