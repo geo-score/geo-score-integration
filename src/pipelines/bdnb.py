@@ -87,11 +87,19 @@ def _detect_separator(zf: zipfile.ZipFile, csv_name: str) -> str:
     return ";" if ";" in header else ","
 
 
+def _fix_dtypes(df: pd.DataFrame) -> pd.DataFrame:
+    """Fix columns where pandas infers float due to NaN but the data is integer/string."""
+    for col in df.columns:
+        if col.endswith("_insee") or col == "code_iris":
+            df[col] = df[col].astype("Int64").astype("string").where(df[col].notna())
+    return df
+
+
 def _load_geo_table(
     zf: zipfile.ZipFile, csv_name: str, table: str, dep: str, sep: str
 ):
     """Load a CSV with WKT geometry into PostGIS."""
-    df = pd.read_csv(zf.open(csv_name), sep=sep, low_memory=False)
+    df = pd.read_csv(zf.open(csv_name), sep=sep, low_memory=False, dtype=str)
 
     # Find WKT geometry column
     geom_col = None
@@ -120,7 +128,7 @@ def _load_flat_table(
     zf: zipfile.ZipFile, csv_name: str, table: str, dep: str, sep: str
 ):
     """Load a CSV without geometry into PostgreSQL."""
-    df = pd.read_csv(zf.open(csv_name), sep=sep, low_memory=False)
+    df = pd.read_csv(zf.open(csv_name), sep=sep, low_memory=False, dtype=str)
 
     if df.empty:
         return 0
