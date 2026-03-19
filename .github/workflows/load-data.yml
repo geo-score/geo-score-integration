@@ -70,6 +70,7 @@ jobs:
             case "$PIPELINE" in
               dvf)          uv run geo-integrate dvf --year 2023 $DEP_FLAGS ;;
               delinquance)  uv run geo-integrate delinquance --year 2024 $DEP_FLAGS ;;
+              bdnb)         uv run geo-integrate bdnb --reset $DEP_FLAGS ;;
               *)            uv run geo-integrate "$PIPELINE" $DEP_FLAGS ;;
             esac
           fi

@@ -198,20 +198,21 @@ def run(departements: list[str], *, reset: bool = False):
                 conn.execute(text(f"DROP TABLE IF EXISTS {SCHEMA}.{table} CASCADE"))
             conn.commit()
         console.print("  [yellow]Reset: all bati tables dropped[/]")
-
-    # Delete existing department data
-    for _, table, _ in TABLES:
-        qualified = f"{SCHEMA}.{table}"
-        with engine.connect() as conn:
-            exists = conn.execute(
-                text("SELECT to_regclass(:t)"), {"t": qualified}
-            ).scalar()
-            if exists:
-                dep_list = ",".join(f"'{d}'" for d in departements)
-                conn.execute(text(
-                    f"DELETE FROM {qualified} WHERE code_departement_insee IN ({dep_list})"
-                ))
-                conn.commit()
+    else:
+        # Delete existing department data
+        for _, table, _ in TABLES:
+            qualified = f"{SCHEMA}.{table}"
+            with engine.connect() as conn:
+                exists = conn.execute(
+                    text("SELECT to_regclass(:t)"), {"t": qualified}
+                ).scalar()
+                if exists:
+                    dep_list = ",".join(f"'{d}'" for d in departements)
+                    conn.execute(text(
+                        f"DELETE FROM {qualified} "
+                        f"WHERE code_departement_insee::text IN ({dep_list})"
+                    ))
+                    conn.commit()
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
