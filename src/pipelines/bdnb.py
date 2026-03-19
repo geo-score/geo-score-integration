@@ -187,9 +187,17 @@ def _process_department(dep: str, tmp_dir: Path):
             console.print(f"    {target_table}: {count:,} rows")
 
 
-def run(departements: list[str]):
+def run(departements: list[str], *, reset: bool = False):
     ensure_postgis()
     ensure_schema(SCHEMA)
+
+    # Drop all tables if reset requested (useful after schema changes)
+    if reset:
+        with engine.connect() as conn:
+            for _, table, _ in TABLES:
+                conn.execute(text(f"DROP TABLE IF EXISTS {SCHEMA}.{table} CASCADE"))
+            conn.commit()
+        console.print("  [yellow]Reset: all bati tables dropped[/]")
 
     # Delete existing department data
     for _, table, _ in TABLES:

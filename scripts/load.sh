@@ -48,7 +48,7 @@ run "MNT sun exposure"          exposition $DEP_FLAGS
 run "TRI flood zones"           flood-tri $DEP_FLAGS
 run "RGA clay risk"             clay-risk $DEP_FLAGS
 run "Storm risk"                storm-risk $DEP_FLAGS
-run "BDNB buildings"            bdnb $DEP_FLAGS
+run "BDNB buildings"            bdnb --reset $DEP_FLAGS
 
 echo "============================================"
 echo "  All pipelines completed."
