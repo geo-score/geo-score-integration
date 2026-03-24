@@ -116,8 +116,9 @@ def _load_geo_table(
     valid = df[geom_col].notna() & (df[geom_col] != "")
     df = df[valid]
 
-    geometry = gpd.GeoSeries(df[geom_col].apply(wkt.loads), crs="EPSG:4326")
-    gdf = gpd.GeoDataFrame(df.drop(columns=[geom_col]), geometry=geometry, crs="EPSG:4326")
+    geometry = gpd.GeoSeries(df[geom_col].apply(wkt.loads), crs="EPSG:2154")
+    gdf = gpd.GeoDataFrame(df.drop(columns=[geom_col]), geometry=geometry, crs="EPSG:2154")
+    gdf = gdf.to_crs(epsg=4326)
     gdf = gdf.rename_geometry("geom")
 
     gdf.to_postgis(table, engine, schema=SCHEMA, if_exists="append", index=False)
@@ -221,7 +222,10 @@ def run(departements: list[str], *, reset: bool = False):
             console.print(
                 f"\n[bold cyan]Department {dep} ({i + 1}/{len(departements)})[/]"
             )
-            _process_department(dep, tmp_dir)
+            try:
+                _process_department(dep, tmp_dir)
+            except Exception as e:
+                console.print(f"  [red]Skipping {dep}: {e}[/]")
 
     console.print("\n  Creating indexes...")
     _ensure_indexes()

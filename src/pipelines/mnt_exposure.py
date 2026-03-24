@@ -235,6 +235,9 @@ def run(departements: list[str]):
             console.print(
                 f"\n[bold cyan]Department {dep} ({i + 1}/{len(departements)})[/]"
             )
-            _process_department(dep, cache)
+            try:
+                _process_department(dep, cache)
+            except Exception as e:
+                console.print(f"  [red]Skipping {dep}: {e}[/]")
 
     console.print(f"\n[bold green]Done — MNT exposure loaded into {SCHEMA}.{TABLE}[/]")

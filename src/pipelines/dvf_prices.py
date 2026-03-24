@@ -94,25 +94,27 @@ def run(year: int, departements: list[str]):
 
         for dep in departements:
             console.print(f"\n[bold]Department {dep}[/bold]")
+            try:
+                dvf_url = f"{DVF_BASE_URL}/{year}/departements/{dep}.csv.gz"
+                dvf_path = download_file(dvf_url, tmp, label=f"DVF {dep} {year}")
 
-            dvf_url = f"{DVF_BASE_URL}/{year}/departements/{dep}.csv.gz"
-            dvf_path = download_file(dvf_url, tmp, label=f"DVF {dep} {year}")
+                sections_url = f"{CADASTRE_BASE_URL}/{dep}/cadastre-{dep}-sections.json.gz"
+                sections_path = download_file(sections_url, tmp, decompress=True, label=f"cadastral sections {dep}")
 
-            sections_url = f"{CADASTRE_BASE_URL}/{dep}/cadastre-{dep}-sections.json.gz"
-            sections_path = download_file(sections_url, tmp, decompress=True, label=f"cadastral sections {dep}")
+                console.print("  Aggregating DVF prices...")
+                dvf_agg = aggregate_dvf(dvf_path)
+                console.print(f"  -> {len(dvf_agg)} sections with sales")
 
-            console.print("  Aggregating DVF prices...")
-            dvf_agg = aggregate_dvf(dvf_path)
-            console.print(f"  -> {len(dvf_agg)} sections with sales")
+                console.print("  Loading geometries...")
+                sections_geom = load_sections_geom(sections_path)
 
-            console.print("  Loading geometries...")
-            sections_geom = load_sections_geom(sections_path)
+                merged = sections_geom.merge(dvf_agg, on="section_id", how="inner")
+                merged["departement"] = dep
+                console.print(f"  -> {len(merged)} sections with price and geometry")
 
-            merged = sections_geom.merge(dvf_agg, on="section_id", how="inner")
-            merged["departement"] = dep
-            console.print(f"  -> {len(merged)} sections with price and geometry")
-
-            all_frames.append(merged)
+                all_frames.append(merged)
+            except Exception as e:
+                console.print(f"  [red]Skipping {dep}: {e}[/]")
 
         if not all_frames:
             console.print("[red]No data to load.[/red]")

@@ -102,16 +102,18 @@ def run(departements: list[str]):
         if i > 0:
             time.sleep(5)
         console.print(f"\n[bold]Department {dep} ({i + 1}/{len(departements)})[/bold]")
+        try:
+            elements = query_overpass(dep, OVERPASS_BODY, out_mode="body geom")
+            console.print(f"  -> {len(elements)} OSM elements found")
 
-        elements = query_overpass(dep, OVERPASS_BODY, out_mode="body geom")
-        console.print(f"  -> {len(elements)} OSM elements found")
+            if not elements:
+                continue
 
-        if not elements:
-            continue
-
-        gdf = parse_elements(elements, dep)
-        console.print(f"  -> {len(gdf)} polygons parsed")
-        all_frames.append(gdf)
+            gdf = parse_elements(elements, dep)
+            console.print(f"  -> {len(gdf)} polygons parsed")
+            all_frames.append(gdf)
+        except Exception as e:
+            console.print(f"  [red]Skipping {dep}: {e}[/]")
 
     if not all_frames:
         console.print("[red]No data to load.[/red]")

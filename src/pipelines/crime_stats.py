@@ -90,11 +90,14 @@ def load_communes_geom(departements: list[str], dest: Path) -> gpd.GeoDataFrame:
     """Load commune geometries for given departments."""
     frames = []
     for dep in departements:
-        url = f"{CADASTRE_BASE_URL}/{dep}/cadastre-{dep}-communes.json.gz"
-        path = download_file(url, dest, decompress=True, label=f"commune geometries {dep}")
-        gdf = gpd.read_file(path)
-        gdf = gdf.rename(columns={"id": "code_commune"})
-        frames.append(gdf[["code_commune", "geometry"]])
+        try:
+            url = f"{CADASTRE_BASE_URL}/{dep}/cadastre-{dep}-communes.json.gz"
+            path = download_file(url, dest, decompress=True, label=f"commune geometries {dep}")
+            gdf = gpd.read_file(path)
+            gdf = gdf.rename(columns={"id": "code_commune"})
+            frames.append(gdf[["code_commune", "geometry"]])
+        except Exception as e:
+            console.print(f"  [red]Skipping geometry {dep}: {e}[/]")
 
     combined = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True))
     console.print(f"  -> {len(combined)} commune geometries loaded")
