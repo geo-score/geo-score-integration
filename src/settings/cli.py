@@ -145,6 +145,32 @@ def bdnb(
 
 
 @app.command()
+def transport(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load OSM transport stops (train stations, metro, tram, bus)."""
+    from pipelines.osm_transport import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
+def roads(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load OSM road network and parking locations."""
+    from pipelines.osm_roads import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
 def dpe_collectif(
         departements: list[str] = typer.Option(
             ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
@@ -155,6 +181,56 @@ def dpe_collectif(
     from pipelines.dpe_collectif import run
 
     run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
+def water(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load OSM water bodies (rivers, lakes, canals)."""
+    from pipelines.osm_water import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
+def climate(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load Météo-France climate data (temperatures, heat days per station)."""
+    from pipelines.climate import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
+def coastal_erosion():
+    """Load coastal erosion indicators from Cerema/Géolittoral."""
+    from pipelines.coastal_erosion import run
+
+    run()
+
+
+@app.command()
+def icu():
+    """Load Urban Heat Island (ICU) indicators from CSTB."""
+    from pipelines.icu import run
+
+    run()
+
+
+@app.command()
+def air_quality():
+    """Load ATMO air quality index per commune."""
+    from pipelines.air_quality import run
+
+    run()
 
 
 @app.command()

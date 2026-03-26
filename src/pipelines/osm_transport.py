@@ -1,8 +1,8 @@
 """
-OSM shops pipeline — Shop and amenity points from OpenStreetMap.
+OSM transport pipeline — Train stations, metro stations, and bus stops.
 
 Schema: osm
-Table: shops
+Table: transport
 
 Source: Overpass API
 """
@@ -23,34 +23,15 @@ from settings.db import engine, ensure_postgis
 console = Console()
 
 SCHEMA = "osm"
-TABLE = "shops"
+TABLE = "transport"
 
-AMENITY_TAGS = [
-    # Commerce & restauration
-    "restaurant", "cafe", "bar", "pub", "fast_food", "bakery",
-    "pharmacy", "bank", "post_office", "fuel",
-    # Santé
-    "dentist", "doctors", "veterinary", "hospital", "clinic",
-    # Culture & loisirs
-    "cinema", "theatre", "library",
-    # Éducation
-    "school", "kindergarten", "college", "university",
-]
-
-LEISURE_TAGS = [
-    "fitness_centre", "sports_centre", "swimming_pool",
-]
-
-OVERPASS_BODY = """  node["shop"]({{bbox}});
-  node["amenity"~"^({amenities})$"]({{bbox}});
-  node["leisure"~"^({leisure})$"]({{bbox}});
-  node["healthcare"]({{bbox}});"""
-
-
-def _build_query_body() -> str:
-    amenity_filter = "|".join(AMENITY_TAGS)
-    leisure_filter = "|".join(LEISURE_TAGS)
-    return OVERPASS_BODY.format(amenities=amenity_filter, leisure=leisure_filter)
+# Overpass query: train stations, metro/tram stops, bus stops
+OVERPASS_BODY = """  node["railway"="station"]({bbox});
+  node["railway"="halt"]({bbox});
+  node["station"="subway"]({bbox});
+  node["railway"="tram_stop"]({bbox});
+  node["highway"="bus_stop"]({bbox});
+  node["amenity"="bus_station"]({bbox});"""
 
 
 def parse_elements(elements: list[dict], dep: str) -> gpd.GeoDataFrame:
@@ -62,20 +43,25 @@ def parse_elements(elements: list[dict], dep: str) -> gpd.GeoDataFrame:
             continue
 
         tags = el.get("tags", {})
+
+        # Determine transport type
+        transport_type = "bus_stop"
+        if tags.get("railway") == "station" or tags.get("railway") == "halt":
+            transport_type = "train_station"
+        elif tags.get("station") == "subway":
+            transport_type = "metro_station"
+        elif tags.get("railway") == "tram_stop":
+            transport_type = "tram_stop"
+        elif tags.get("amenity") == "bus_station":
+            transport_type = "bus_station"
+
         rows.append({
             "osm_id": el["id"],
             "name": tags.get("name"),
-            "shop": tags.get("shop"),
-            "amenity": tags.get("amenity"),
-            "leisure": tags.get("leisure"),
-            "healthcare": tags.get("healthcare"),
-            "cuisine": tags.get("cuisine"),
-            "brand": tags.get("brand"),
-            "opening_hours": tags.get("opening_hours"),
-            "addr_street": tags.get("addr:street"),
-            "addr_housenumber": tags.get("addr:housenumber"),
-            "addr_postcode": tags.get("addr:postcode"),
-            "addr_city": tags.get("addr:city"),
+            "transport_type": transport_type,
+            "network": tags.get("network"),
+            "operator": tags.get("operator"),
+            "line": tags.get("line"),
             "departement": dep,
             "geometry": Point(lon, lat),
         })
@@ -91,7 +77,6 @@ def run(departements: list[str]):
     ensure_schema(SCHEMA)
 
     qualified = f"{SCHEMA}.{TABLE}"
-    query_body = _build_query_body()
     all_frames = []
 
     for i, dep in enumerate(departements):
@@ -99,14 +84,14 @@ def run(departements: list[str]):
             time.sleep(5)
         console.print(f"\n[bold]Department {dep} ({i + 1}/{len(departements)})[/bold]")
         try:
-            elements = query_overpass(dep, query_body)
+            elements = query_overpass(dep, OVERPASS_BODY)
             console.print(f"  -> {len(elements)} OSM elements found")
 
             if not elements:
                 continue
 
             gdf = parse_elements(elements, dep)
-            console.print(f"  -> {len(gdf)} points parsed")
+            console.print(f"  -> {len(gdf)} transport stops parsed")
             all_frames.append(gdf)
         except Exception as e:
             console.print(f"  [red]Skipping {dep}: {e}[/]")
@@ -119,7 +104,6 @@ def run(departements: list[str]):
     final = final.set_crs(epsg=4326)
     final = final.rename_geometry("geom")
 
-    # Drop and recreate (schema changed with new columns)
     from sqlalchemy import text as sa_text
     with engine.connect() as conn:
         conn.execute(sa_text(f"DROP TABLE IF EXISTS {qualified} CASCADE"))
@@ -132,4 +116,4 @@ def run(departements: list[str]):
         conn.execute(sa_text(f"CREATE INDEX IF NOT EXISTS idx_{TABLE}_geom ON {qualified} USING GIST (geom)"))
         conn.commit()
 
-    console.print(f"[green]Done — {len(final)} points loaded into {qualified}[/green]")
+    console.print(f"[green]Done — {len(final)} transport stops loaded into {qualified}[/green]")
