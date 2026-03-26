@@ -145,6 +145,19 @@ def bdnb(
 
 
 @app.command()
+def dpe_collectif(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load DPE collectifs from ADEME (building-level energy performance)."""
+    from pipelines.dpe_collectif import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
 def check_db():
     """Check database connection."""
     from sqlalchemy import text
