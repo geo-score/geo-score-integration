@@ -234,6 +234,14 @@ def air_quality():
 
 
 @app.command()
+def pollens():
+    """Load ATMO pollen index per commune."""
+    from pipelines.pollens import run
+
+    run()
+
+
+@app.command()
 def check_db():
     """Check database connection."""
     from sqlalchemy import text

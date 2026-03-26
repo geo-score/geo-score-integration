@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     db_name: str
     db_user: str
     db_password: str
+    atmo_username: str = ""
+    atmo_password: str = ""
 
     @property
     def database_url(self) -> str:

@@ -1,21 +1,24 @@
 """
-Air quality pipeline — ATMO index per commune from Atmo France.
+Air quality pipeline — ATMO index per commune from Atmo France API v2.
 
 Schema: climate
 Table: air_quality
 
-Source: Atmo France via data.gouv.fr API
-        Indice de la qualité de l'air quotidien par commune
+Source: Atmo France API v2
+        https://admindata.atmo-france.org/api/doc/v2
+        Requires JWT authentication (24h token).
 """
+
+from datetime import date
 
 import geopandas as gpd
 import httpx
-import pandas as pd
 from rich.console import Console
 from shapely.geometry import Point
 from sqlalchemy import text
 
 from common import ensure_schema
+from settings.config import settings
 from settings.db import engine, ensure_postgis
 
 console = Console()
@@ -23,120 +26,112 @@ console = Console()
 SCHEMA = "climate"
 TABLE = "air_quality"
 
-# Atmo France API for the latest ATMO indices
-ATMO_API = "https://services9.arcgis.com/7Sr9Ek9c1QTKmbwr/arcgis/rest/services"
-STATIONS_URL = f"{ATMO_API}/Mesure_horaire_(30j)/FeatureServer/0/query"
-INDEX_URL = f"{ATMO_API}/ind_atmo_com/FeatureServer/0/query"
+ATMO_BASE = "https://admindata.atmo-france.org"
+ATMO_LOGIN = f"{ATMO_BASE}/api/login"
+ATMO_INDEX = f"{ATMO_BASE}/api/v2/data/indices/atmo"
 
 
-def _fetch_atmo_index() -> pd.DataFrame:
-    """Fetch latest ATMO index per commune."""
-    all_rows = []
-    offset = 0
-    page_size = 2000
+def _get_token() -> str:
+    """Authenticate and get JWT token."""
+    username = settings.atmo_username
+    password = settings.atmo_password
+    if not username or not password:
+        raise ValueError("ATMO_USERNAME and ATMO_PASSWORD must be set in .env")
 
-    while True:
-        params = {
-            "where": "1=1",
-            "outFields": "code_zone,lib_zone,date_ech,code_qual,lib_qual,source,type_zone,partition_field",
-            "f": "json",
-            "resultRecordCount": page_size,
-            "resultOffset": offset,
-            "orderByFields": "code_zone",
-        }
-
-        try:
-            resp = httpx.get(INDEX_URL, params=params, timeout=60)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            console.print(f"  [red]API error at offset {offset}: {e}[/]")
-            break
-
-        features = data.get("features", [])
-        if not features:
-            break
-
-        for f in features:
-            attrs = f.get("attributes", {})
-            all_rows.append(attrs)
-
-        offset += page_size
-        if len(features) < page_size:
-            break
-
-        if offset % 10000 == 0:
-            console.print(f"  ... {len(all_rows):,} records fetched")
-
-    return pd.DataFrame(all_rows)
+    resp = httpx.post(
+        ATMO_LOGIN,
+        json={"username": username, "password": password},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    token = resp.json().get("token")
+    if not token:
+        raise ValueError("No token in login response")
+    console.print("  [green]Authenticated with ATMO France[/]")
+    return token
 
 
-def _fetch_commune_centroids(codes: list[str]) -> dict[str, tuple[float, float]]:
-    """Get commune centroids from existing crime_stats or dvf data."""
-    # Use communes from crime_stats which have geometry
-    try:
-        from sqlalchemy import create_engine
-        result = engine.connect().execute(text("""
-            SELECT code_commune, ST_Y(ST_Centroid(geom)) as lat, ST_X(ST_Centroid(geom)) as lon
-            FROM crime_stats.y2024
-        """))
-        return {row[0]: (row[1], row[2]) for row in result}
-    except Exception:
-        return {}
+def _fetch_indices(token: str, target_date: str) -> gpd.GeoDataFrame:
+    """Fetch ATMO indices for a given date as GeoJSON."""
+    resp = httpx.get(
+        ATMO_INDEX,
+        params={"date": target_date},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        },
+        timeout=120,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    if not data.get("features"):
+        return gpd.GeoDataFrame()
+
+    # Parse GeoJSON features
+    rows = []
+    for f in data["features"]:
+        props = f.get("properties", {})
+        # Use WGS84 coords from properties (geometry is in EPSG:3857)
+        lat = props.get("y_wgs84")
+        lon = props.get("x_wgs84")
+        if lat is None or lon is None:
+            continue
+
+        rows.append({
+            "commune_code": props.get("code_zone"),
+            "commune_name": props.get("lib_zone"),
+            "quality_index": props.get("code_qual"),
+            "quality_label": props.get("lib_qual"),
+            "no2_index": props.get("code_no2"),
+            "o3_index": props.get("code_o3"),
+            "pm10_index": props.get("code_pm10"),
+            "pm25_index": props.get("code_pm25"),
+            "so2_index": props.get("code_so2"),
+            "source": props.get("source"),
+            "date": props.get("date_ech"),
+            "geom": Point(lon, lat),
+        })
+
+    if not rows:
+        return gpd.GeoDataFrame()
+
+    return gpd.GeoDataFrame(rows, geometry="geom", crs="EPSG:4326")
 
 
 def run(departements: list[str] | None = None):
     ensure_postgis()
     ensure_schema(SCHEMA)
 
-    console.print("\n[bold]Fetching ATMO air quality index...[/bold]")
-    df = _fetch_atmo_index()
-    console.print(f"  -> {len(df):,} records fetched")
+    console.print("\n[bold]ATMO Air Quality Index[/bold]")
 
-    if df.empty:
+    token = _get_token()
+    target = date.today().isoformat()
+    console.print(f"  Fetching indices for {target}...")
+
+    gdf = _fetch_indices(token, target)
+    console.print(f"  -> {len(gdf):,} commune indices fetched")
+
+    if gdf.empty:
         console.print("[red]No data.[/red]")
         return
 
-    # Keep latest date per commune
-    df = df.sort_values("date_ech", ascending=False).drop_duplicates(subset=["code_zone"], keep="first")
-    console.print(f"  -> {len(df):,} communes with latest index")
-
-    # Get commune centroids for geocoding
-    console.print("  Fetching commune centroids...")
-    centroids = _fetch_commune_centroids(df["code_zone"].tolist())
-    console.print(f"  -> {len(centroids):,} commune centroids available")
-
-    # Merge
-    df["lat"] = df["code_zone"].map(lambda c: centroids.get(c, (None, None))[0])
-    df["lon"] = df["code_zone"].map(lambda c: centroids.get(c, (None, None))[1])
-    df = df.dropna(subset=["lat", "lon"])
-
-    df = df.rename(columns={
-        "code_zone": "commune_code",
-        "lib_zone": "commune_name",
-        "code_qual": "quality_index",
-        "lib_qual": "quality_label",
-        "date_ech": "date",
-    })
-
-    geometry = [Point(lon, lat) for lon, lat in zip(df["lon"], df["lat"])]
-    gdf = gpd.GeoDataFrame(
-        df[["commune_code", "commune_name", "quality_index", "quality_label", "date"]],
-        geometry=geometry,
-        crs="EPSG:4326",
-    )
-    gdf = gdf.rename_geometry("geom")
-
     if departements:
-        gdf = gdf[gdf["commune_code"].str[:2].isin(departements) | gdf["commune_code"].str[:3].isin(departements)]
+        gdf = gdf[
+            gdf["commune_code"].str[:2].isin(departements)
+            | gdf["commune_code"].str[:3].isin(departements)
+        ]
+        console.print(f"  -> {len(gdf):,} after department filter")
 
     qualified = f"{SCHEMA}.{TABLE}"
-    console.print(f"\n[bold]Loading {len(gdf):,} records into {qualified}...[/bold]")
+    console.print(f"\n[bold]Loading into {qualified}...[/bold]")
 
     gdf.to_postgis(TABLE, engine, schema=SCHEMA, if_exists="replace", index=False)
 
     with engine.connect() as conn:
-        conn.execute(text(f"CREATE INDEX IF NOT EXISTS idx_{TABLE}_geom ON {SCHEMA}.{TABLE} USING GIST (geom)"))
+        conn.execute(text(
+            f"CREATE INDEX IF NOT EXISTS idx_{TABLE}_geom ON {SCHEMA}.{TABLE} USING GIST (geom)"
+        ))
         conn.commit()
 
     console.print(f"[green]Done — {len(gdf):,} air quality records loaded into {qualified}[/green]")
