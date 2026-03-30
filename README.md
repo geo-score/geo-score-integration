@@ -203,6 +203,158 @@ uv run geo-integrate bdnb --all    # ~35 GB in DB, long download
 
 ---
 
+## OSM Transport — Train stations, metro, tram, bus stops
+
+Queries the Overpass API for public transport stops and stations as points.
+
+**Schema:** `osm` — table: `transport`
+
+**Columns:** `osm_id`, `name`, `transport_type` (`train_station` / `metro_station` / `tram_stop` / `bus_station` / `bus_stop`), `network`, `operator`, `line`, `departement`, `geom` (Point, GIST index)
+
+```bash
+uv run geo-integrate transport --dep 75
+uv run geo-integrate transport --all
+```
+
+---
+
+## OSM Roads — Road network and parking locations
+
+Queries the Overpass API for roads (motorway, trunk, primary, secondary) and parking facilities.
+
+**Schema:** `osm` — tables: `roads`, `parking`
+
+**Columns (roads):** `osm_id`, `name`, `highway`, `lanes`, `maxspeed`, `surface`, `departement`, `geom` (LineString, GIST index)
+
+**Columns (parking):** `osm_id`, `name`, `parking_type`, `capacity`, `fee`, `access`, `departement`, `geom` (Point/Polygon, GIST index)
+
+```bash
+uv run geo-integrate roads --dep 75
+uv run geo-integrate roads --all
+```
+
+---
+
+## DPE Collectif — Building-level energy performance (ADEME)
+
+Downloads collective building DPE audits from ADEME Open Data API, geocodes via BAN address, and loads into PostGIS.
+
+**Schema:** `energy` — table: `dpe_collectif`
+
+**Columns:** `numero_dpe`, `type_batiment`, `etiquette_dpe`, `etiquette_ges`, `conso_5_usages_par_m2_ep`, `emission_ges_5_usages_par_m2`, `qualite_isolation_*`, `surface_habitable_immeuble`, `nombre_appartement`, `periode_construction`, `cout_total_5_usages`, `date_etablissement_dpe`, `departement`, `geom` (Point, GIST index)
+
+```bash
+uv run geo-integrate dpe-collectif --dep 75
+uv run geo-integrate dpe-collectif --all
+```
+
+---
+
+## OSM Water — Rivers, lakes, canals
+
+Queries the Overpass API for water bodies: rivers, canals, streams, and lakes.
+
+**Schema:** `osm` — table: `water`
+
+**Columns:** `osm_id`, `name`, `water_type` (`river` / `canal` / `stream` / `water`), `departement`, `geom` (LineString/Polygon, GIST index)
+
+```bash
+uv run geo-integrate water --dep 75
+uv run geo-integrate water --all
+```
+
+---
+
+## Climate — Météo-France temperature statistics per station
+
+Downloads Météo-France monthly climate data (MENSQ) from data.gouv.fr, aggregates 10 years (2014–2024) of temperature records per station.
+
+**Schema:** `climate` — table: `stations`
+
+**Columns:** `station_id`, `station_name`, `altitude`, `departement`, `avg_temp_max`, `avg_temp_min`, `max_temp_recorded`, `avg_days_above_25`, `avg_days_above_30`, `avg_days_above_35`, `geom` (Point, GIST index)
+
+```bash
+uv run geo-integrate climate --dep 75
+uv run geo-integrate climate --all
+```
+
+---
+
+## Coastal Erosion — Shoreline evolution indicators (Cerema)
+
+Downloads national coastal erosion shapefile from Cerema/Géolittoral, tracking 50+ years of shoreline evolution. Reprojects from Lambert 93 to WGS84.
+
+**Schema:** `coastal` — table: `erosion`
+
+```bash
+uv run geo-integrate coastal-erosion
+```
+
+---
+
+## ICU — Urban Heat Island indicators (CSTB)
+
+Downloads satellite-derived urban heat island (ICU) indicators from CSTB Sat4BDNB dataset.
+
+**Schema:** `climate` — table: `icu`
+
+```bash
+uv run geo-integrate icu
+```
+
+---
+
+## Air Quality — ATMO air quality index per commune
+
+Fetches daily ATMO air quality index from Atmo France API with pollutant-specific indices.
+
+**Schema:** `climate` — table: `air_quality`
+
+**Columns:** `commune_code`, `commune_name`, `quality_index`, `quality_label`, `no2_index`, `o3_index`, `pm10_index`, `pm25_index`, `so2_index`, `source`, `date`, `geom` (Point, GIST index)
+
+```bash
+uv run geo-integrate air-quality
+```
+
+---
+
+## Pollens — Pollen index per commune
+
+Fetches daily pollen index from Atmo France API with species-specific levels.
+
+**Schema:** `climate` — table: `pollens`
+
+**Columns:** `commune_code`, `commune_name`, `quality_index`, `quality_label`, `alert`, `responsible_pollen`, `birch_index`, `grass_index`, `olive_index`, `ragweed_index`, `mugwort_index`, `alder_index`, `date`, `source`, `geom` (Point, GIST index)
+
+```bash
+uv run geo-integrate pollens
+```
+
+---
+
+## PLU — Plan Local d'Urbanisme (zoning + prescriptions)
+
+Fetches PLU zoning and prescriptions from the Géoportail de l'Urbanisme (GPU) WFS service.
+
+**Schema:** `plu` — tables: `zones`, `prescriptions`
+
+**Columns (zones):** `typezone` (`U` / `AU` / `A` / `N`), `libelle`, `libelong`, `destdomi`, `idurba`, `datappro`, `urlfic`, `departement`, `geom` (Polygon, GIST index)
+
+**Columns (prescriptions):** `typepsc`, `stypepsc`, `libelle`, `txt`, `departement`, `geom` (Polygon, GIST index)
+
+**Zone types:**
+- `U` — Urbaine (constructible)
+- `AU` — À Urbaniser (AUc = court terme, AUs = strict)
+- `A` — Agricole (non constructible sauf dérogation)
+- `N` — Naturelle (non constructible)
+
+```bash
+uv run geo-integrate plu --dep 75
+uv run geo-integrate plu --all
+```
+
+---
+
 ## Pipelines summary
 
 | Pipeline       | Schema        | Table           | Source                   | Description                                        |
@@ -216,8 +368,18 @@ uv run geo-integrate bdnb --all    # ~35 GB in DB, long download
 | `clay-risk`    | `clay_risk`   | `rga_zones`     | Georisques / BRGM        | Clay shrink-swell exposure zones                   |
 | `storm-risk`   | `storm_risk`  | `wind_zones` / `catnat_storm` | Eurocode + GASPAR | Wind zones + storm CatNat history     |
 | `bdnb`         | `bati`        | 8 tables                      | BDNB (CSTB)       | Building data: energy, risks, DVF, copro |
+| `transport`    | `osm`         | `transport`   | Overpass API             | Train stations, metro, tram, bus stops             |
+| `roads`        | `osm`         | `roads` / `parking` | Overpass API       | Road network and parking locations                 |
+| `dpe-collectif`| `energy`      | `dpe_collectif` | ADEME Open Data        | Building-level energy performance (DPE)            |
+| `water`        | `osm`         | `water`       | Overpass API             | Rivers, lakes, canals                              |
+| `climate`      | `climate`     | `stations`    | Météo-France             | Temperature statistics per station (10y avg)        |
+| `coastal-erosion` | `coastal`  | `erosion`     | Cerema/Géolittoral       | Shoreline evolution indicators                     |
+| `icu`          | `climate`     | `icu`         | CSTB Sat4BDNB            | Urban heat island indicators                       |
+| `air-quality`  | `climate`     | `air_quality` | Atmo France API          | ATMO air quality index per commune                 |
+| `pollens`      | `climate`     | `pollens`     | Atmo France API          | Pollen index per commune                           |
+| `plu`          | `plu`         | `zones` / `prescriptions` | GPU WFS      | PLU zoning and prescriptions                       |
 
-All pipelines support `--dep` (one or more) and `--all` flags. Pipelines are idempotent per department.
+All pipelines support `--dep` (one or more) and `--all` flags unless noted otherwise. Pipelines are idempotent per department.
 
 ## Architecture
 
@@ -237,11 +399,21 @@ src/
     ├── crime_stats.py         # Crime stats → communes ETL
     ├── osm_shops.py           # OSM shops → points ETL
     ├── osm_green_spaces.py    # OSM green spaces → polygons ETL
+    ├── osm_transport.py       # OSM transport stops → points ETL
+    ├── osm_roads.py           # OSM roads + parking ETL
+    ├── osm_water.py           # OSM water bodies ETL
     ├── mnt_exposure.py        # Copernicus DEM → sun exposure polygons ETL
     ├── flood_tri.py           # Georisques TRI → flood zone polygons ETL
     ├── clay_risk.py           # Georisques RGA → clay shrink-swell zones ETL
     ├── storm_risk.py          # Eurocode wind zones + GASPAR CatNat storms ETL
-    └── bdnb.py                # BDNB building data (energy, risks, DVF, copro) ETL
+    ├── bdnb.py                # BDNB building data (energy, risks, DVF, copro) ETL
+    ├── dpe_collectif.py       # ADEME DPE collectif ETL
+    ├── climate.py             # Météo-France temperature stats ETL
+    ├── coastal_erosion.py     # Cerema coastal erosion ETL
+    ├── icu.py                 # CSTB urban heat island ETL
+    ├── air_quality.py         # Atmo air quality index ETL
+    ├── pollens.py             # Atmo pollen index ETL
+    └── plu.py                 # GPU PLU zoning + prescriptions ETL
 docker/
 ├── docker-compose.yml         # PostGIS database (shared with geo-score-back)
 └── init-db/01-init.sql        # PostGIS extensions init

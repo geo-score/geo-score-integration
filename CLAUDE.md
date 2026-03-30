@@ -45,6 +45,16 @@ docker/           # docker-compose + PostGIS init scripts (shared with geo-score
 | `clay-risk`      | `clay_risk.py`       | `clay_risk`   | `rga_zones`    | Polygon    |
 | `storm-risk`     | `storm_risk.py`      | `storm_risk`  | `wind_zones` / `catnat_storm` | Polygon |
 | `bdnb`           | `bdnb.py`            | `bati`        | 8 tables                      | Polygon + flat |
+| `transport`      | `osm_transport.py`   | `osm`         | `transport`                   | Point      |
+| `roads`          | `osm_roads.py`       | `osm`         | `roads` / `parking`           | Line / Polygon |
+| `dpe-collectif`  | `dpe_collectif.py`   | `energy`      | `dpe_collectif`               | Point      |
+| `water`          | `osm_water.py`       | `osm`         | `water`                       | Line / Polygon |
+| `climate`        | `climate.py`         | `climate`     | `stations`                    | Point      |
+| `coastal-erosion`| `coastal_erosion.py` | `coastal`     | `erosion`                     | Polygon    |
+| `icu`            | `icu.py`             | `climate`     | `icu`                         | Polygon    |
+| `air-quality`    | `air_quality.py`     | `climate`     | `air_quality`                 | Point      |
+| `pollens`        | `pollens.py`         | `climate`     | `pollens`                     | Point      |
+| `plu`            | `plu.py`             | `plu`         | `zones` / `prescriptions`     | Polygon    |
 
 All commands support `--dep 75 --dep 92` or `--all` for department selection.
 

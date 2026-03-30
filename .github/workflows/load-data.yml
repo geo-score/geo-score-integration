@@ -23,6 +23,16 @@ on:
           - clay-risk
           - storm-risk
           - bdnb
+          - transport
+          - roads
+          - dpe-collectif
+          - water
+          - climate
+          - coastal-erosion
+          - icu
+          - air-quality
+          - pollens
+          - plu
 
 env:
   DB_HOST: ${{ secrets.DB_HOST }}

@@ -49,6 +49,16 @@ run "TRI flood zones"           flood-tri $DEP_FLAGS
 run "RGA clay risk"             clay-risk $DEP_FLAGS
 run "Storm risk"                storm-risk $DEP_FLAGS
 run "BDNB buildings"            bdnb --reset $DEP_FLAGS
+run "OSM transport"             transport $DEP_FLAGS
+run "OSM roads"                 roads $DEP_FLAGS
+run "DPE collectif"             dpe-collectif $DEP_FLAGS
+run "OSM water"                 water $DEP_FLAGS
+run "Climate stations"          climate $DEP_FLAGS
+run "Coastal erosion"           coastal-erosion
+run "Urban heat island (ICU)"   icu
+run "Air quality"               air-quality
+run "Pollens"                   pollens
+run "PLU zoning"                plu $DEP_FLAGS
 
 echo "============================================"
 echo "  All pipelines completed."

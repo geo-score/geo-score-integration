@@ -242,6 +242,19 @@ def pollens():
 
 
 @app.command()
+def plu(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load PLU zones and prescriptions from Géoportail de l'Urbanisme."""
+    from pipelines.plu import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
 def check_db():
     """Check database connection."""
     from sqlalchemy import text
