@@ -242,6 +242,19 @@ def pollens():
 
 
 @app.command()
+def wiki_pois(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Enrich OSM POIs with Wikidata descriptions, images, and Wikipedia extracts."""
+    from pipelines.wiki_pois import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
 def plu(
         departements: list[str] = typer.Option(
             ["75"], "--dep", help="Department codes (e.g. 75 92 93)"

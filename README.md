@@ -334,23 +334,48 @@ uv run geo-integrate pollens
 
 ## PLU — Plan Local d'Urbanisme (zoning + prescriptions)
 
-Fetches PLU zoning and prescriptions from the Géoportail de l'Urbanisme (GPU) WFS service.
+Fetches PLU zoning and prescriptions from the Géoportail de l'Urbanisme (GPU) WFS service. Pre-checks each commune's document status (PLU/PLUi/CC vs RNU) via `wfs_du:document` and only downloads data for covered communes. Downloads run in parallel (5 workers).
 
 **Schema:** `plu` — tables: `zones`, `prescriptions`
 
-**Columns (zones):** `typezone` (`U` / `AU` / `A` / `N`), `libelle`, `libelong`, `destdomi`, `idurba`, `datappro`, `urlfic`, `departement`, `geom` (Polygon, GIST index)
+**Columns (zones):** `typezone`, `zone_category` (`urban` / `to_urbanize` / `to_urbanize_strict` / `agricultural` / `natural` / `other`), `libelle`, `libelong`, `destdomi`, `idurba`, `datappro`, `urlfic`, `departement`, `geom` (Polygon, GIST index)
 
 **Columns (prescriptions):** `typepsc`, `stypepsc`, `libelle`, `txt`, `departement`, `geom` (Polygon, GIST index)
 
-**Zone types:**
-- `U` — Urbaine (constructible)
-- `AU` — À Urbaniser (AUc = court terme, AUs = strict)
-- `A` — Agricole (non constructible sauf dérogation)
-- `N` — Naturelle (non constructible)
+**Zone categories:**
+- `urban` — Urbaine / constructible (typezone U)
+- `to_urbanize` — À Urbaniser / court terme (typezone AU, AUc)
+- `to_urbanize_strict` — À Urbaniser / strict, requires modification (typezone AUs)
+- `agricultural` — Agricole / non constructible sauf dérogation (typezone A)
+- `natural` — Naturelle / non constructible (typezone N)
+- `other` — unrecognized typezone
+
+**Document status:** communes are pre-checked against the GPU document registry. Only communes with a PLU, PLUi, or CC are downloaded. Communes under RNU (no local planning document) are skipped.
 
 ```bash
 uv run geo-integrate plu --dep 75
 uv run geo-integrate plu --all
+```
+
+---
+
+## Wiki POIs — Points of interest enriched with Wikidata
+
+Queries Overpass API for OSM nodes with a `wikidata` tag (tourism, historic, amenity, leisure categories), then enriches each POI with Wikidata descriptions and image URLs.
+
+**Schema:** `osm` — table: `poi_wiki`
+
+**Columns:** `osm_id`, `wikidata_id`, `name`, `category`, `description`, `image_url`, `departement`, `geom` (Point, GIST index)
+
+**Categories queried:**
+- `tourism` — museum, gallery, hotel, attraction, viewpoint
+- `historic` — monument, castle, memorial, ruins, archaeological site, church
+- `amenity` — restaurant, cafe, bar, theatre, cinema, museum, place of worship
+- `leisure` — park, garden, sports centre, stadium
+
+```bash
+uv run geo-integrate wiki-pois --dep 75
+uv run geo-integrate wiki-pois --all
 ```
 
 ---
@@ -378,6 +403,7 @@ uv run geo-integrate plu --all
 | `air-quality`  | `climate`     | `air_quality` | Atmo France API          | ATMO air quality index per commune                 |
 | `pollens`      | `climate`     | `pollens`     | Atmo France API          | Pollen index per commune                           |
 | `plu`          | `plu`         | `zones` / `prescriptions` | GPU WFS      | PLU zoning and prescriptions                       |
+| `wiki-pois`    | `osm`         | `poi_wiki`    | Overpass + Wikidata      | POIs enriched with descriptions and images         |
 
 All pipelines support `--dep` (one or more) and `--all` flags unless noted otherwise. Pipelines are idempotent per department.
 
@@ -413,7 +439,8 @@ src/
     ├── icu.py                 # CSTB urban heat island ETL
     ├── air_quality.py         # Atmo air quality index ETL
     ├── pollens.py             # Atmo pollen index ETL
-    └── plu.py                 # GPU PLU zoning + prescriptions ETL
+    ├── plu.py                 # GPU PLU zoning + prescriptions ETL
+    └── wiki_pois.py           # Wikidata-enriched POIs ETL
 docker/
 ├── docker-compose.yml         # PostGIS database (shared with geo-score-back)
 └── init-db/01-init.sql        # PostGIS extensions init

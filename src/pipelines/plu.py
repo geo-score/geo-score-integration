@@ -19,7 +19,7 @@ Prescriptions: servitudes, emplacements réservés, EBC, patrimoine, etc.
 
 import io
 import tempfile
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import quote
 
@@ -27,6 +27,7 @@ import geopandas as gpd
 import httpx
 import pandas as pd
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, MofNCompleteColumn, TimeElapsedColumn
 from sqlalchemy import text
 
 from common import ensure_schema
@@ -38,8 +39,8 @@ SCHEMA = "plu"
 WFS_URL = "https://data.geopf.fr/wfs/ows"
 GEO_API_URL = "https://geo.api.gouv.fr/departements/{dep}/communes?fields=code&format=json"
 PAGE_SIZE = 5000
-REQUEST_TIMEOUT = 120
-MAX_RETRIES = 3
+REQUEST_TIMEOUT = 15
+MAX_WORKERS = 5  # parallel commune downloads
 
 
 # ---------------------------------------------------------------------------
@@ -54,27 +55,63 @@ def _get_communes(dep: str) -> list[str]:
     return [c["code"] for c in resp.json()]
 
 
+def _get_commune_doc_status(dep: str, communes: list[str]) -> dict[str, str | None]:
+    """Query wfs_du:document to get PLU/PLUi/CC status per commune.
+
+    Returns a dict mapping commune code → du_type (PLU, PLUi, CC) or None (RNU).
+    """
+    status: dict[str, str | None] = {c: None for c in communes}
+
+    cql = f"partition LIKE 'DU_{dep}%'"
+    start_index = 0
+
+    while True:
+        url = (
+            f"{WFS_URL}?service=WFS&version=2.0.0&request=GetFeature"
+            f"&typeName=wfs_du:document"
+            f"&outputFormat=application/json"
+            f"&count={PAGE_SIZE}"
+            f"&startIndex={start_index}"
+            f"&sortBy=gid"
+            f"&CQL_FILTER={quote(cql)}"
+        )
+        data = _fetch_page(url)
+        if data is None:
+            break
+
+        gdf = gpd.read_file(io.BytesIO(data))
+        if gdf.empty:
+            break
+
+        for _, row in gdf.iterrows():
+            code = row.get("grid_name")
+            du_type = row.get("du_type")
+            if code and code in status:
+                status[code] = du_type
+
+        if len(gdf) < PAGE_SIZE:
+            break
+        start_index += PAGE_SIZE
+
+    return status
+
+
 def _fetch_page(url: str) -> bytes | None:
-    """Download a single WFS page with timeout and retry. Returns raw bytes."""
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            resp = httpx.get(url, timeout=REQUEST_TIMEOUT, follow_redirects=True)
-            resp.raise_for_status()
-            return resp.content
-        except Exception as e:
-            if attempt < MAX_RETRIES:
-                wait = 5 * attempt
-                console.print(
-                    f"    [yellow]Attempt {attempt}/{MAX_RETRIES} failed: {e} — retry in {wait}s[/]"
-                )
-                time.sleep(wait)
-            else:
-                console.print(f"    [red]Failed after {MAX_RETRIES} attempts: {e}[/]")
-                return None
+    """Download a single WFS page. Server errors (5xx) → skip immediately."""
+    try:
+        resp = httpx.get(url, timeout=REQUEST_TIMEOUT, follow_redirects=True)
+        resp.raise_for_status()
+        return resp.content
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code >= 500:
+            return None
+        raise
+    except Exception:
+        return None
 
 
 def _download_commune_layer(
-    layer: str, commune: str, out_dir: Path, prefix: str
+    layer: str, commune: str, out_dir: Path, prefix: str,
 ) -> int:
     """Download all pages of a WFS layer for one commune to local files.
     Returns number of features downloaded."""
@@ -261,45 +298,106 @@ def run(departements: list[str]):
 
         console.print(f"  {len(communes)} communes")
 
+        # Check document status per commune (PLU/PLUi/CC vs RNU)
+        doc_status = _get_commune_doc_status(dep, communes)
+        covered = {c for c, s in doc_status.items() if s is not None}
+        rnu = {c for c, s in doc_status.items() if s is None}
+
+        # Count by type
+        type_counts: dict[str, int] = {}
+        for s in doc_status.values():
+            key = s or "RNU"
+            type_counts[key] = type_counts.get(key, 0) + 1
+        summary = ", ".join(f"{t}: {n}" for t, n in sorted(type_counts.items()))
+        console.print(f"  Document status: {summary}")
+
+        if not covered:
+            console.print(f"  [yellow]All communes under RNU — skipping[/]")
+            continue
+
+        covered_list = [c for c in communes if c in covered]
+        console.print(f"  Downloading {len(covered_list)} covered communes...")
+
         with tempfile.TemporaryDirectory(prefix=f"plu-{dep}-") as tmpdir:
             tmp = Path(tmpdir)
 
-            # --- 1. Download all communes locally ---
+            # --- 1. Download covered communes in parallel ---
             total_zones = 0
             total_presc = 0
-            for j, commune in enumerate(communes):
+
+            def _download_commune(commune: str) -> tuple[int, int]:
                 z = _download_commune_layer("wfs_du:zone_urba", commune, tmp, "zones")
                 p = _download_commune_layer("wfs_du:prescription_surf", commune, tmp, "presc")
-                total_zones += z
-                total_presc += p
+                return z, p
 
-                if (j + 1) % 50 == 0 or j == len(communes) - 1:
-                    console.print(
-                        f"  [{j + 1}/{len(communes)}] "
-                        f"zones: {total_zones:,} | prescriptions: {total_presc:,}"
-                    )
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TextColumn("zones:{task.fields[zones]} presc:{task.fields[presc]}"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                dl_task = progress.add_task(
+                    f"  Downloading {dep}",
+                    total=len(covered_list),
+                    zones=0,
+                    presc=0,
+                )
+                with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+                    futures = {
+                        pool.submit(_download_commune, c): c
+                        for c in covered_list
+                    }
+                    for future in as_completed(futures):
+                        z, p = future.result()
+                        total_zones += z
+                        total_presc += p
+                        progress.update(
+                            dl_task,
+                            advance=1,
+                            zones=f"{total_zones:,}",
+                            presc=f"{total_presc:,}",
+                        )
 
-            # --- 2. Merge local files ---
-            console.print("  Merging zones...")
-            zones_raw = _merge_local_files(tmp, "zones")
-            console.print("  Merging prescriptions...")
-            presc_raw = _merge_local_files(tmp, "presc")
+            # --- 2. Merge + Clean + Load ---
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                TimeElapsedColumn(),
+                console=console,
+                transient=True,
+            ) as progress:
+                task = progress.add_task(f"  Processing {dep}", total=4)
 
-            # --- 3. Clean ---
-            zones = _clean_zones(zones_raw, dep)
-            presc = _clean_prescriptions(presc_raw, dep)
+                progress.update(task, description=f"  Merging zones...")
+                zones_raw = _merge_local_files(tmp, "zones")
+                progress.advance(task)
 
-            # --- 4. Load to DB ---
-            _delete_department("zones", dep)
+                progress.update(task, description=f"  Merging prescriptions...")
+                presc_raw = _merge_local_files(tmp, "presc")
+                progress.advance(task)
+
+                progress.update(task, description=f"  Cleaning...")
+                zones = _clean_zones(zones_raw, dep)
+                presc = _clean_prescriptions(presc_raw, dep)
+                progress.advance(task)
+
+                progress.update(task, description=f"  Loading to PostGIS...")
+                _delete_department("zones", dep)
+                if not zones.empty:
+                    _load_to_postgis(zones, "zones")
+                _delete_department("prescriptions", dep)
+                if not presc.empty:
+                    _load_to_postgis(presc, "prescriptions")
+                progress.advance(task)
+
             if not zones.empty:
-                _load_to_postgis(zones, "zones")
                 console.print(f"  [green]{len(zones):,} zones loaded[/]")
             else:
                 console.print(f"  [yellow]No zones for {dep}[/]")
-
-            _delete_department("prescriptions", dep)
             if not presc.empty:
-                _load_to_postgis(presc, "prescriptions")
                 console.print(f"  [green]{len(presc):,} prescriptions loaded[/]")
             else:
                 console.print(f"  [yellow]No prescriptions for {dep}[/]")
