@@ -55,6 +55,7 @@ docker/           # docker-compose + PostGIS init scripts (shared with geo-score
 | `air-quality`    | `air_quality.py`     | `climate`     | `air_quality`                 | Point      |
 | `pollens`        | `pollens.py`         | `climate`     | `pollens`                     | Point      |
 | `plu`            | `plu.py`             | `plu`         | `zones` / `prescriptions`     | Polygon    |
+| `wiki-pois`      | `wiki_pois.py`       | `osm`         | `poi_wiki`                    | Point      |
 
 All commands support `--dep 75 --dep 92` or `--all` for department selection.
 
