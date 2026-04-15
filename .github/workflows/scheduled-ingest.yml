@@ -1,0 +1,56 @@
+name: Scheduled ingest
+
+on:
+  schedule:
+    - cron: "0 6 * * *"       # daily 06:00 UTC — air quality + pollens
+    - cron: "0 4 1 * *"       # monthly 1st 04:00 UTC — climate stations
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which job to run manually"
+        required: true
+        default: daily
+        type: choice
+        options:
+          - daily
+          - monthly
+
+env:
+  DB_HOST: ${{ secrets.DB_HOST }}
+  DB_PORT: ${{ secrets.DB_PORT }}
+  DB_NAME: ${{ secrets.DB_NAME }}
+  DB_USER: ${{ secrets.DB_USER }}
+  DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+  ATMO_USERNAME: ${{ secrets.ATMO_USERNAME }}
+  ATMO_PASSWORD: ${{ secrets.ATMO_PASSWORD }}
+
+concurrency:
+  group: scheduled-ingest
+  cancel-in-progress: false
+
+jobs:
+  daily:
+    if: github.event.schedule == '0 6 * * *' || github.event.inputs.job == 'daily'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync
+      - run: uv run geo-integrate check-db
+      - name: Ingest air quality
+        run: uv run geo-integrate air-quality
+      - name: Ingest pollens
+        run: uv run geo-integrate pollens
+
+  monthly:
+    if: github.event.schedule == '0 4 1 * *' || github.event.inputs.job == 'monthly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync
+      - run: uv run geo-integrate check-db
+      - name: Ingest climate stations
+        run: uv run geo-integrate climate --all
