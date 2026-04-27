@@ -9,12 +9,20 @@ from rich.console import Console
 console = Console()
 
 
-def download_file(url: str, dest: Path, *, decompress: bool = False, label: str = "") -> Path:
+def download_file(
+    url: str,
+    dest: Path,
+    *,
+    decompress: bool = False,
+    label: str = "",
+    filename: str | None = None,
+) -> Path:
     """Download a file via HTTP streaming. Optionally decompress .gz."""
+    name = filename or Path(url).name
     if decompress:
-        out = dest / Path(url).name.removesuffix(".gz")
+        out = dest / name.removesuffix(".gz")
     else:
-        out = dest / Path(url).name
+        out = dest / name
 
     if out.exists():
         return out
@@ -22,7 +30,7 @@ def download_file(url: str, dest: Path, *, decompress: bool = False, label: str 
     if label:
         console.print(f"  Downloading {label}...")
 
-    gz_path = dest / Path(url).name
+    gz_path = dest / name
     with httpx.stream("GET", url, follow_redirects=True, timeout=120) as r:
         r.raise_for_status()
         with open(gz_path, "wb") as f:

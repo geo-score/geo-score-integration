@@ -36,8 +36,11 @@ docker/           # docker-compose + PostGIS init scripts (shared with geo-score
 
 | CLI command      | Pipeline file        | Schema        | Table          | Geometry   |
 |------------------|----------------------|---------------|----------------|------------|
-| `dvf`            | `dvf_prices.py`      | `dvf_prices`  | `y{year}`      | Polygon    |
-| `delinquance`    | `crime_stats.py`     | `crime_stats` | `y{year}`      | Polygon    |
+| `commune-geoms`  | `commune_geoms.py`   | `geom_utils`  | `communes`     | Polygon    |
+| `dvf-sections`   | `dvf_sections.py`    | `dvf_prices`  | `sections`     | Polygon    |
+| `dvf`            | `dvf_prices.py`      | `dvf_prices`  | `y{year}`      | (no geom, FK `section_id`) |
+| `delinquance`    | `crime_stats.py`     | `crime_stats` | `y{year}`      | (no geom, FK `code_commune`) |
+| `rents`          | `rents.py`           | `rents`       | `indicators_{year}` | (no geom, FK `code_commune`) |
 | `shops`          | `osm_shops.py`       | `osm`         | `shops`        | Point      |
 | `green-spaces`   | `osm_green_spaces.py`| `osm`         | `green_spaces` | Polygon    |
 | `exposition`     | `mnt_exposure.py`    | `mnt`         | `exposure`     | Polygon    |

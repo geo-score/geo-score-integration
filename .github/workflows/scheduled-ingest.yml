@@ -39,9 +39,19 @@ jobs:
       - run: uv sync
       - run: uv run geo-integrate check-db
       - name: Ingest air quality
+        id: air_quality
+        continue-on-error: true
         run: uv run geo-integrate air-quality
       - name: Ingest pollens
+        id: pollens
+        continue-on-error: true
         run: uv run geo-integrate pollens
+      - name: Fail if any ingest failed
+        if: steps.air_quality.outcome == 'failure' || steps.pollens.outcome == 'failure'
+        run: |
+          echo "air_quality: ${{ steps.air_quality.outcome }}"
+          echo "pollens: ${{ steps.pollens.outcome }}"
+          exit 1
 
   monthly:
     if: github.event.schedule == '0 4 1 * *' || github.event.inputs.job == 'monthly'

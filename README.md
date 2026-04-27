@@ -33,33 +33,94 @@ uv run geo-integrate dvf --year 2023 --all
 
 ---
 
+## DVF sections — Cadastral section reference geometries
+
+Downloads all cadastral section geometries from the Etalab cadastre (derived from DGFiP) into a single reference table. Run this once (and refresh yearly); yearly DVF price tables join on `section_id`.
+
+**Schema:** `dvf_prices` — table: `sections`
+
+**Columns:** `section_id` (PK-like), `commune`, `prefixe`, `code`, `departement`, `geom` (Polygon, GIST index)
+
+```bash
+uv run geo-integrate dvf-sections --all
+uv run geo-integrate dvf-sections --dep 75 --dep 94
+```
+
+---
+
 ## DVF — Land value prices per cadastral section
 
-Downloads DVF open data + cadastral section geometries from data.gouv.fr, aggregates median price/m² per section, and loads into PostGIS.
+Downloads DVF open data from data.gouv.fr, filters ventes / VEFA / adjudications, and aggregates median price/m² per section. Geometry is not stored here — join on `dvf_prices.sections.section_id` to get the polygon.
 
 **Schema:** `dvf_prices` — one table per year (`y2023`, `y2022`, etc.)
 
-**Columns:** `section_id`, `geom` (Polygon, GIST index), `prix_m2_median`, `prix_m2_mean`, `nb_ventes`, `surface_mediane`, `departement`
+**Columns:** `section_id`, `prix_m2_median`, `prix_m2_mean`, `nb_ventes`, `surface_mediane`, `departement`
+
+**Mutation types kept:** `Vente`, `Vente en l'état futur d'achèvement` (VEFA), `Adjudication`.
 
 ```bash
+# Load sections once first
+uv run geo-integrate dvf-sections --all
+
+# Then load prices per year
 uv run geo-integrate dvf --year 2023 --dep 75
 uv run geo-integrate dvf --year 2023 --all
-uv run geo-integrate dvf --year 2022 --dep 75    # → dvf_prices.y2022
+uv run geo-integrate dvf --year 2021 --year 2022 --year 2023 --all   # multiple years
+```
+
+---
+
+## Commune geoms — Shared commune reference layer
+
+Downloads all commune geometries from the Etalab cadastre into a single reference table. Run once (refresh yearly); commune-level pipelines (crime_stats, rents) join on `code_commune`.
+
+**Schema:** `geom_utils` — table: `communes`
+
+**Columns:** `code_commune` (PK-like), `nom_commune`, `departement`, `geom` (Polygon, GIST index)
+
+```bash
+uv run geo-integrate commune-geoms --all
+uv run geo-integrate commune-geoms --dep 75 --dep 94
 ```
 
 ---
 
 ## Crime stats — Crime statistics per commune
 
-Downloads commune-level crime statistics from data.gouv.fr + commune geometries from Etalab cadastre, pivots indicators into columns (rate per 1000 + count), and loads into PostGIS.
+Downloads commune-level crime statistics from data.gouv.fr, pivots indicators into columns (rate per 1000 + count). Geometry not stored here — join on `geom_utils.communes.code_commune`.
 
 **Schema:** `crime_stats` — one table per year (`y2024`, `y2023`, etc.)
 
-**Columns:** `code_commune`, `geom` (Polygon, GIST index), `departement`, `taux_*` (rate per 1000), `nb_*` (count)
+**Columns:** `code_commune`, `departement`, `taux_*` (rate per 1000), `nb_*` (count)
 
 ```bash
+# Load communes once first
+uv run geo-integrate commune-geoms --all
+
+# Then load crime stats per year
 uv run geo-integrate delinquance --year 2024 --dep 75
 uv run geo-integrate delinquance --year 2024 --all
+```
+
+---
+
+## Rents — Carte des loyers per commune
+
+Downloads ANIL/Ministère de la Transition écologique rent estimates from data.gouv.fr. One row per commune × property type (4 categories).
+
+**Schema:** `rents` — one table per year (`indicators_2025`, etc.)
+
+**Columns:** `code_commune`, `type_local` (`apartment_all` / `apartment_t1_t2` / `apartment_t3_plus` / `house`), `departement`, `loyer_m2_median` (predicted €/m² CC), `loyer_m2_lower`, `loyer_m2_upper` (95% confidence interval bounds), `prediction_type` (`commune` if enough obs, else `maille`), `nb_obs`, `r2_adj`
+
+Reference apartment sizes used by the model: 52 m² (all), 37 m² (T1-T2), 72 m² (T3+), 92 m² (house).
+
+```bash
+# Load communes once first
+uv run geo-integrate commune-geoms --all
+
+# Then load rents
+uv run geo-integrate rents --year 2025 --all
+uv run geo-integrate rents --year 2025 --dep 75 --dep 94
 ```
 
 ---

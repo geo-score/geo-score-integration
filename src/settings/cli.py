@@ -26,7 +26,9 @@ def _resolve_deps(departements: list[str], all_deps: bool) -> list[str]:
 
 @app.command()
 def dvf(
-        year: int = typer.Option(2023, help="DVF year to load"),
+        years: list[int] = typer.Option(
+            [2023], "--year", help="DVF year(s) to load (repeatable)"
+        ),
         departements: list[str] = typer.Option(
             ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
         ),
@@ -34,6 +36,49 @@ def dvf(
 ):
     """Load median DVF prices per cadastral section."""
     from pipelines.dvf_prices import run
+
+    deps = _resolve_deps(departements, all_deps)
+    for year in years:
+        console.print(f"\n[bold cyan]=== Year {year} ===[/bold cyan]")
+        run(year=year, departements=deps)
+
+
+@app.command("dvf-sections")
+def dvf_sections(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load cadastral section geometries (reference table for DVF prices)."""
+    from pipelines.dvf_sections import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command("commune-geoms")
+def commune_geoms(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load commune geometries (shared reference table for commune-level pipelines)."""
+    from pipelines.commune_geoms import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
+def rents(
+        year: int = typer.Option(2025, help="Carte des loyers year (currently 2025 only)"),
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load Carte des loyers (rent estimates per commune by property type)."""
+    from pipelines.rents import run
 
     run(year=year, departements=_resolve_deps(departements, all_deps))
 
