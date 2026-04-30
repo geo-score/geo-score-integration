@@ -35,8 +35,12 @@ def extract_section_id(id_parcelle: str) -> str | None:
     return str(id_parcelle)[:10]
 
 
-def aggregate_dvf(dvf_path: Path, departement: str) -> pd.DataFrame:
-    """Aggregate DVF mutations per cadastral section."""
+def aggregate_dvf(dvf_path: Path, departement: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Aggregate DVF mutations per cadastral section AND per commune.
+
+    Commune-level metrics use the true median over raw transactions, not a
+    weighted average of section medians.
+    """
     cols = [
         "id_mutation",
         "nature_mutation",
@@ -57,8 +61,9 @@ def aggregate_dvf(dvf_path: Path, departement: str) -> pd.DataFrame:
 
     bati = df[df["surface_reelle_bati"] > 0].copy()
     bati["prix_m2"] = bati["valeur_fonciere"] / bati["surface_reelle_bati"]
+    bati["code_commune"] = bati["section_id"].str[:5]
 
-    agg = (
+    section_agg = (
         bati.groupby("section_id")
         .agg(
             prix_m2_q1=("prix_m2", lambda s: s.quantile(0.25)),
@@ -70,8 +75,21 @@ def aggregate_dvf(dvf_path: Path, departement: str) -> pd.DataFrame:
         )
         .reset_index()
     )
-    agg["departement"] = departement
-    return agg
+    section_agg["departement"] = departement
+
+    commune_agg = (
+        bati.groupby("code_commune")
+        .agg(
+            commune_median_price_sqm=("prix_m2", "median"),
+            commune_mean_price_sqm=("prix_m2", "mean"),
+            commune_sales_count=("id_mutation", "nunique"),
+            commune_sections_count=("section_id", "nunique"),
+        )
+        .reset_index()
+    )
+    commune_agg["departement"] = departement
+
+    return section_agg, commune_agg
 
 
 def run(year: int, departements: list[str]):
@@ -79,12 +97,15 @@ def run(year: int, departements: list[str]):
     ensure_postgis()
     ensure_schema(SCHEMA)
 
-    table = f"y{year}"
-    qualified = f"{SCHEMA}.{table}"
+    section_table = f"y{year}"
+    section_qualified = f"{SCHEMA}.{section_table}"
+    commune_table = f"communes_y{year}"
+    commune_qualified = f"{SCHEMA}.{commune_table}"
 
     with tempfile.TemporaryDirectory(prefix="geo-dvf-") as tmpdir:
         tmp = Path(tmpdir)
-        all_frames = []
+        section_frames = []
+        commune_frames = []
 
         for dep in departements:
             console.print(f"\n[bold]Department {dep}[/bold]")
@@ -93,28 +114,42 @@ def run(year: int, departements: list[str]):
                 dvf_path = download_file(dvf_url, tmp, label=f"DVF {dep} {year}")
 
                 console.print("  Aggregating DVF prices...")
-                dvf_agg = aggregate_dvf(dvf_path, dep)
-                console.print(f"  -> {len(dvf_agg)} sections with sales")
+                section_agg, commune_agg = aggregate_dvf(dvf_path, dep)
+                console.print(
+                    f"  -> {len(section_agg)} sections, {len(commune_agg)} communes with sales"
+                )
 
-                all_frames.append(dvf_agg)
+                section_frames.append(section_agg)
+                commune_frames.append(commune_agg)
             except Exception as e:
                 console.print(f"  [red]Skipping {dep}: {e}[/]")
 
-        if not all_frames:
+        if not section_frames:
             console.print("[red]No data to load.[/red]")
             return
 
-        final = pd.concat(all_frames, ignore_index=True)
+        final_sections = pd.concat(section_frames, ignore_index=True)
+        final_communes = pd.concat(commune_frames, ignore_index=True)
 
-        delete_existing_departments(qualified, departements)
+        delete_existing_departments(section_qualified, departements)
+        delete_existing_departments(commune_qualified, departements)
 
-        console.print(f"\n[bold]Loading into {qualified}...[/bold]")
-        final.to_sql(table, engine, schema=SCHEMA, if_exists="append", index=False)
+        console.print(f"\n[bold]Loading into {section_qualified}...[/bold]")
+        final_sections.to_sql(section_table, engine, schema=SCHEMA, if_exists="append", index=False)
+
+        console.print(f"[bold]Loading into {commune_qualified}...[/bold]")
+        final_communes.to_sql(commune_table, engine, schema=SCHEMA, if_exists="append", index=False)
 
         with engine.connect() as conn:
             conn.execute(text(
-                f"CREATE INDEX IF NOT EXISTS idx_{table}_section_id ON {qualified} (section_id)"
+                f"CREATE INDEX IF NOT EXISTS idx_{section_table}_section_id ON {section_qualified} (section_id)"
+            ))
+            conn.execute(text(
+                f"CREATE INDEX IF NOT EXISTS idx_{commune_table}_code_commune ON {commune_qualified} (code_commune)"
             ))
             conn.commit()
 
-        console.print(f"[green]Done — {len(final)} sections loaded into {qualified}[/green]")
+        console.print(
+            f"[green]Done — {len(final_sections)} sections and {len(final_communes)} communes "
+            f"loaded for {year}[/green]"
+        )

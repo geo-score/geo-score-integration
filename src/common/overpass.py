@@ -146,8 +146,9 @@ out {out_mode};
 """
     console.print(f"  Querying Overpass API for {dep}...")
 
+    headers = {"User-Agent": "geo-score-integration/1.0 (kevin.graff1@gmail.com)"}
     for attempt in range(max_retries):
-        resp = httpx.post(OVERPASS_URL, data={"data": query}, timeout=200)
+        resp = httpx.post(OVERPASS_URL, data={"data": query}, timeout=200, headers=headers)
         if resp.status_code == 429:
             wait = 15 * (attempt + 1)
             console.print(f"  [yellow]Rate limited, waiting {wait}s...[/yellow]")

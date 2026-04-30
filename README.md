@@ -140,6 +140,66 @@ uv run geo-integrate shops --all
 
 ---
 
+## OSM Nightclubs — Nightlife and noise-generating venues
+
+Queries Overpass for nightclubs, bars, pubs, music venues, casinos, beer gardens. Used for evening/night noise nuisance scoring.
+
+**Schema:** `osm` — table: `nightclubs`
+
+**Columns:** `osm_id`, `name`, `amenity`, `leisure`, `opening_hours`, `addr_*`, `departement`, `geom` (Point, GIST index)
+
+```bash
+uv run geo-integrate nightclubs --dep 75
+uv run geo-integrate nightclubs --all
+```
+
+---
+
+## OSM Railways — Rail lines and stations
+
+Queries Overpass for railway tracks (heavy rail, tram, subway, light rail) and stations/stops. Used for proximity-based train/tram noise scoring.
+
+**Schema:** `osm` — two tables:
+- `railways` (LineString) — `osm_id`, `name`, `railway`, `operator`, `service`, `usage`, `electrified`, `maxspeed`, `tunnel`, `bridge`, `departement`, `geom`
+- `railway_stations` (Point) — `osm_id`, `name`, `railway`, `station`, `network`, `operator`, `departement`, `geom`
+
+```bash
+uv run geo-integrate railways --dep 75
+uv run geo-integrate railways --all
+```
+
+---
+
+## OSM Airports — Aerodromes, runways, helipads
+
+Queries Overpass for `aeroway=*` features (aerodromes, runways, taxiways, terminals, helipads). Mixed geometry table for proximity-based aircraft noise scoring.
+
+**Schema:** `osm` — table: `airports`
+
+**Columns:** `osm_id`, `name`, `aeroway`, `iata`, `icao`, `operator`, `use`, `departement`, `geom` (Polygon / Line / Point, GIST index)
+
+```bash
+uv run geo-integrate airports --dep 93    # Charles de Gaulle, Le Bourget
+uv run geo-integrate airports --all
+```
+
+---
+
+## OSM Industry — Industrial zones and works
+
+Queries Overpass for industrial land use (`landuse=industrial|quarry|port`), factories, warehouses, refineries, water/wastewater plants, gasometers, chimneys. Used for proximity-based pollution/noise scoring.
+
+**Schema:** `osm` — table: `industry`
+
+**Columns:** `osm_id`, `name`, `landuse`, `industrial`, `man_made`, `building`, `operator`, `departement`, `geom` (Polygon, GIST index)
+
+```bash
+uv run geo-integrate industry --dep 75
+uv run geo-integrate industry --all
+```
+
+---
+
 ## OSM Green Spaces — Parks, gardens, playgrounds as polygons
 
 Queries the Overpass API for green/recreational areas: parks, gardens, playgrounds, dog parks, nature reserves, recreation grounds, forests, meadows.

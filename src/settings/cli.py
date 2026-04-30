@@ -56,6 +56,25 @@ def dvf_sections(
     run(departements=_resolve_deps(departements, all_deps))
 
 
+@app.command("dvf-communes")
+def dvf_communes(
+        years: list[int] = typer.Option(
+            [2023], "--year", help="DVF year(s) to load (repeatable)"
+        ),
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load DVF commune-level aggregation only (does not touch dvf_prices.y{year})."""
+    from pipelines.dvf_communes import run
+
+    deps = _resolve_deps(departements, all_deps)
+    for year in years:
+        console.print(f"\n[bold cyan]=== Year {year} ===[/bold cyan]")
+        run(year=year, departements=deps)
+
+
 @app.command("commune-geoms")
 def commune_geoms(
         departements: list[str] = typer.Option(
@@ -106,6 +125,58 @@ def shops(
 ):
     """Load OSM shops and amenities as points."""
     from pipelines.osm_shops import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
+def nightclubs(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load OSM nightlife venues (bars, clubs, music venues) as points."""
+    from pipelines.osm_nightclubs import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
+def railways(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load OSM railway lines and stations."""
+    from pipelines.osm_railways import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
+def airports(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load OSM airports, runways, helipads."""
+    from pipelines.osm_airports import run
+
+    run(departements=_resolve_deps(departements, all_deps))
+
+
+@app.command()
+def industry(
+        departements: list[str] = typer.Option(
+            ["75"], "--dep", help="Department codes (e.g. 75 92 93)"
+        ),
+        all_deps: bool = typer.Option(False, "--all", help="Load all departments"),
+):
+    """Load OSM industrial zones and works as polygons."""
+    from pipelines.osm_industry import run
 
     run(departements=_resolve_deps(departements, all_deps))
 

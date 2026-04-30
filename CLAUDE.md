@@ -38,10 +38,15 @@ docker/           # docker-compose + PostGIS init scripts (shared with geo-score
 |------------------|----------------------|---------------|----------------|------------|
 | `commune-geoms`  | `commune_geoms.py`   | `geom_utils`  | `communes`     | Polygon    |
 | `dvf-sections`   | `dvf_sections.py`    | `dvf_prices`  | `sections`     | Polygon    |
-| `dvf`            | `dvf_prices.py`      | `dvf_prices`  | `y{year}`      | (no geom, FK `section_id`) |
+| `dvf`            | `dvf_prices.py`      | `dvf_prices`  | `y{year}` + `communes_y{year}` | (no geom, FK `section_id` / `code_commune`) |
+| `dvf-communes`   | `dvf_communes.py`    | `dvf_prices`  | `communes_y{year}` (only)      | (no geom, FK `code_commune`) |
 | `delinquance`    | `crime_stats.py`     | `crime_stats` | `y{year}`      | (no geom, FK `code_commune`) |
 | `rents`          | `rents.py`           | `rents`       | `indicators_{year}` | (no geom, FK `code_commune`) |
 | `shops`          | `osm_shops.py`       | `osm`         | `shops`        | Point      |
+| `nightclubs`     | `osm_nightclubs.py`  | `osm`         | `nightclubs`   | Point      |
+| `railways`       | `osm_railways.py`    | `osm`         | `railways` / `railway_stations` | Line / Point |
+| `airports`       | `osm_airports.py`    | `osm`         | `airports`     | Polygon / Line / Point |
+| `industry`       | `osm_industry.py`    | `osm`         | `industry`     | Polygon    |
 | `green-spaces`   | `osm_green_spaces.py`| `osm`         | `green_spaces` | Polygon    |
 | `exposition`     | `mnt_exposure.py`    | `mnt`         | `exposure`     | Polygon    |
 | `flood-tri`      | `flood_tri.py`       | `flood_risk`  | `tri_zones`    | Polygon    |
