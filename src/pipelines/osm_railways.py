@@ -59,6 +59,9 @@ def _parse_line_elements(elements: list[dict], dep: str) -> gpd.GeoDataFrame:
             "maxspeed": tags.get("maxspeed"),
             "tunnel": tags.get("tunnel"),
             "bridge": tags.get("bridge"),
+            "cutting": tags.get("cutting"),
+            "embankment": tags.get("embankment"),
+            "noise_barrier": tags.get("noise_barrier"),
             "departement": dep,
             "geom": LineString(coords),
         })
